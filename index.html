@@ -1288,6 +1288,7 @@ function batirFlux() {
   observerClotures();
   jouerOuverture(0);
   precharger(0, 4);
+  clearTimeout(auRepos);
 }
 
 function batirSegments() {
@@ -1370,10 +1371,6 @@ function peindre() {
     const index = Math.min(centre, cartes.length - 1);
     peindreEntete(index);
     poserFond(cartes[index]);
-    if (destination === null || index === destination) {
-      if (index === destination) { destination = null; clearTimeout(finDuSaut); }
-      jouerOuverture(index);
-    }
     precharger(index + 1);
   }
 }
@@ -1460,6 +1457,17 @@ function annoncer(texte) {
   r._t = setTimeout(() => r.classList.remove("visible"), 1600);
 }
 
+let sauvegardeMuette = false;
+
+function sauver() {
+  const ok = M.sauverEtat(etat);
+  if (!ok && !sauvegardeMuette) {
+    sauvegardeMuette = true;
+    annoncer("progression non enregistrée par le navigateur");
+  }
+  return ok;
+}
+
 function marquer(action) {
   const v = cartes[indexCourant()];
   if (!v || !v.id) return;
@@ -1478,7 +1486,7 @@ function marquer(action) {
       setTimeout(() => ouvrirFin(), 400);
     }
   }
-  M.sauverEtat(etat);
+  sauver();
   peindreEntete(indexCourant());
 }
 
@@ -1538,7 +1546,33 @@ flux.addEventListener("click", (e) => {
 
 $("ouverture").addEventListener("click", fermerOuverture);
 
+/* L ouverture attend l immobilite, pas le changement de carte.
+ *
+ * Se fier au numero de la carte centree ne marche pas : pendant un lancer de
+ * doigt, Safari fait passer la position bien au-dela de la carte visee avant de
+ * la ramener, et chaque carte ainsi survolee declenchait son animation. Se fier
+ * a un delai fixe ne marche pas non plus, c est ce qui donnait cette demi-
+ * seconde de latence.
+ *
+ * On attend donc que le defilement se soit tu. Une carte reellement atteinte
+ * l est en une fraction de seconde, une carte traversee ne l est jamais. */
+const REPOS = 70;
+let auRepos = null;
+
+function verifierRepos() {
+  const H = flux.clientHeight || 1;
+  const pos = flux.scrollTop / H;
+  const index = Math.min(Math.round(pos), cartes.length - 1);
+  if (Math.abs(pos - index) > 0.02) return;          // pas encore cale
+
+  if (destination !== null && index !== destination) return;
+  if (index === destination) { destination = null; clearTimeout(finDuSaut); }
+  jouerOuverture(index);
+}
+
 flux.addEventListener("scroll", () => {
+  clearTimeout(auRepos);
+  auRepos = setTimeout(verifierRepos, REPOS);
   if (enAttente) return;
   enAttente = true;
   requestAnimationFrame(() => { enAttente = false; peindre(); });
@@ -1574,6 +1608,16 @@ function anneau(valeur, libelle, couleur, pct) {
 }
 
 function rendreProgression() {
+  // La progression vit dans le stockage du navigateur, pas dans le paquet. La
+  // montrer noir sur blanc evite d avoir a deviner, un jour, si une mise a jour
+  // l a effacee ou si rien n avait ete enregistre.
+  const lues = etat.evenements.filter((e) => e.action === "terminee").length;
+  const dates = etat.evenements.map((e) => e.date).filter(Boolean);
+  const dernier = dates.length
+    ? new Date(Math.max(...dates)).toLocaleString("fr-FR",
+        { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+    : "aucun";
+
   const ret = M.retention(etat);
   const serie = M.serie(etat);
   const modules = M.progression(paquet, etat);
@@ -1586,6 +1630,11 @@ function rendreProgression() {
       ${anneau(serie, "jours<br>d'affilée", "#8fb996", Math.min(100, serie * 14))}
       ${anneau(moyenne + "%", "parcours<br>actifs", "#7fa6c4", moyenne)}
     </div>
+    <div class="sous-titre">Enregistrement</div>
+    <div class="ligne"><span class="nom-mod">Cartes lues, en mémoire</span>
+      <span class="val">${lues}</span></div>
+    <div class="ligne"><span class="nom-mod">Dernier geste enregistré</span>
+      <span class="val">${dernier}</span></div>
     <div class="sous-titre">Modules actifs</div>
     ${actifs.map((m) => `<div class="ligne">
       <span class="nom-mod"><i class="puce" style="background:${couleurs(m.id)[0]}"></i>${echappe(m.nom)}</span>

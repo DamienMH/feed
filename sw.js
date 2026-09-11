@@ -6,7 +6,7 @@
 // A incrementer des que la coquille change : l activation efface les anciens
 // caches, sinon un index.html perime resterait servi indefiniment.
 // v2 : ouverture animee et illustrations.
-const CACHE = "feed-a66d75b5";
+const CACHE = "feed-91da1638";
 const COQUILLE = ["./", "./index.html", "./manifest.json"];
 
 self.addEventListener("install", (e) => {
