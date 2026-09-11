@@ -11,6 +11,8 @@ indispensable pour les previsualisations qui interdisent les modules externes.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import re
 import sys
 from pathlib import Path
 
@@ -41,6 +43,26 @@ def assembler(paquet: Path | None) -> str:
     return sortie
 
 
+def versionner_cache(html: str) -> str | None:
+    """Aligne le nom du cache du service worker sur le contenu de la page.
+
+    Le service worker sert la coquille depuis son cache et ne la remplace que si
+    son nom change. Tant qu on l ecrivait a la main, toute correction oubliait
+    de le faire et n arrivait jamais sur le telephone deja installe. On derive
+    donc le nom d une empreinte de la page : il change exactement quand il
+    faut, ni plus ni moins."""
+    sw = DOSSIER / "sw.js"
+    if not sw.exists():
+        return None
+    empreinte = hashlib.sha256(html.encode("utf-8")).hexdigest()[:8]
+    avant = sw.read_text(encoding="utf-8")
+    apres = re.sub(r'const CACHE = "[^"]*";', f'const CACHE = "feed-{empreinte}";', avant)
+    if apres != avant:
+        sw.write_text(apres, encoding="utf-8")
+        return empreinte
+    return None
+
+
 def main() -> int:
     analyseur = argparse.ArgumentParser(description="Assemblage de l application")
     analyseur.add_argument("--integre", action="store_true",
@@ -59,6 +81,12 @@ def main() -> int:
         DOSSIER / ("demo.html" if arguments.integre else "index.html"))
     sortie.write_text(html, encoding="utf-8")
     print(f"  {sortie.name} : {sortie.stat().st_size / 1024:.0f} Ko")
+
+    if not arguments.integre:
+        empreinte = versionner_cache(html)
+        if empreinte:
+            print(f"  sw.js : cache renomme feed-{empreinte}, "
+                  "les telephones prendront la nouvelle version")
     return 0
 
 

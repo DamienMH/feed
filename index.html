@@ -28,8 +28,13 @@
     overflow: hidden; display: flex; flex-direction: column;
   }
 
+  /* viewport-fit=cover et la barre d etat translucide d iOS font passer la page
+     SOUS l heure et les indicateurs reseau. C est ce qu on veut pour les images,
+     qui gagnent tout l ecran, mais il faut alors reserver la place a la main :
+     sans ces marges, l en-tete se retrouve cache derriere l horloge. */
   .haut {
-    position: relative; z-index: 20; padding: 18px 16px 10px;
+    position: relative; z-index: 20;
+    padding: calc(18px + env(safe-area-inset-top)) 16px 10px;
     background: linear-gradient(180deg, var(--ground) 60%, transparent);
     display: flex; flex-direction: column; gap: 9px;
   }
@@ -54,7 +59,28 @@
   }
   .compteur { border-color: transparent; font-variant-numeric: tabular-nums; }
 
-  .flux { flex: 1; overflow-y: auto; scroll-snap-type: y mandatory; scroll-behavior: smooth; scrollbar-width: none; }
+  /* ---- fond partage ----
+     L illustration ne vit plus dans la carte mais derriere le flux. Deux volets
+     d un meme chapitre partagent la meme image : elle doit rester immobile
+     pendant que le texte defile, au lieu de sortir par le haut et de revenir
+     identique par le bas. Le fondu ne se declenche donc que quand l image
+     change reellement. */
+  .fond { position: absolute; inset: 0; z-index: 0; overflow: hidden; background: var(--ground); }
+  .fond img {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; opacity: 0; transition: opacity .5s ease;
+  }
+  .fond img.visible { opacity: 1; }
+  .fond::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgba(0,0,0,.45) 0%, rgba(0,0,0,.12) 26%,
+                                var(--ground) 72%, var(--ground) 100%);
+    opacity: .95; transition: opacity .5s ease, background .5s ease;
+  }
+  /* Un chapitre se lit du haut au bas de l ecran : son image passe en texture. */
+  .fond.lecture::after { background: var(--ground); opacity: .91; }
+
+  .flux { position: relative; z-index: 1; flex: 1; overflow-y: auto; scroll-snap-type: y mandatory; scroll-behavior: smooth; scrollbar-width: none; }
   .flux::-webkit-scrollbar { display: none; }
   .carte {
     scroll-snap-align: start; scroll-snap-stop: always; height: 100%;
@@ -150,7 +176,7 @@
      efface l interface et montre l image entiere, sans recadrage : "cover"
      remplit l ecran mais ampute l oeuvre, "contain" la donne telle qu elle est. */
   .loupe {
-    position: absolute; top: 14px; right: 18px; z-index: 6;
+    position: absolute; top: calc(14px + env(safe-area-inset-top)); right: 18px; z-index: 6;
     width: 34px; height: 34px; border-radius: 50%; cursor: pointer;
     border: 1px solid rgba(255,255,255,.22); background: rgba(10,10,12,.45);
     color: rgba(255,255,255,.8); font-size: 14px; line-height: 1;
@@ -166,7 +192,8 @@
   .carte > *:not(.visuel) { transition: opacity .3s ease; }
   .carte .visuel img, .carte .visuel::after { transition: opacity .3s ease; }
   .sortir-plein {
-    position: absolute; left: 50%; transform: translateX(-50%); bottom: 26px; z-index: 7;
+    position: absolute; left: 50%; transform: translateX(-50%); z-index: 7;
+    bottom: calc(26px + env(safe-area-inset-bottom));
     font-family: "JetBrains Mono", monospace; font-size: 10px; letter-spacing: .12em;
     text-transform: uppercase; color: rgba(255,255,255,.55);
     opacity: 0; pointer-events: none; transition: opacity .3s ease .1s;
@@ -194,24 +221,10 @@
      convient a un titre pose en bas mais rend illisible un texte qui occupe
      toute la hauteur : on le remplace par un aplat, pas une opacite plus forte
      sur le meme degrade. */
-  .carte.illustree[data-type="chapitre"] { justify-content: center; }
-  .carte.illustree[data-type="chapitre"] .visuel::after {
-    background: var(--ground);
-    opacity: .91;
-  }
   .carte.illustree[data-type="chapitre"] h1,
   .carte.illustree[data-type="chapitre"] p,
   .carte.illustree[data-type="chapitre"] .accroche {
     text-shadow: 0 1px 12px rgba(0,0,0,.55);
-  }
-
-  /* Sur une carte de feed le texte tient dans le bas : on y ferme franchement
-     le degrade, la partie haute reste l image. */
-  .carte.illustree:not([data-type="chapitre"]) .visuel::after {
-    background: linear-gradient(180deg,
-      rgba(0,0,0,.45) 0%, rgba(0,0,0,.12) 26%,
-      var(--ground) 72%, var(--ground) 100%);
-    opacity: .95;
   }
 
   /* ---- ouverture : l image plein ecran avant que la carte se devoile ----
@@ -239,7 +252,10 @@
       radial-gradient(118% 76% at 50% 34%, transparent 18%, rgba(6,6,8,.62) 100%),
       linear-gradient(180deg, rgba(6,6,8,.5) 0%, transparent 26%, rgba(6,6,8,.9) 100%);
   }
-  .ouv-texte { position: relative; z-index: 2; padding: 0 24px 82px; }
+  .ouv-texte {
+    position: relative; z-index: 2;
+    padding: 0 24px calc(82px + env(safe-area-inset-bottom));
+  }
   .ouverture.joue .ouv-mod { animation: monte .5s ease .3s both; }
   .ouverture.joue .ouv-titre { animation: monte .6s cubic-bezier(.2,.7,.3,1) .5s both; }
   .ouverture.joue .ouv-credit { animation: parait .6s ease 1.5s both; }
@@ -253,12 +269,16 @@
     color: #fff; margin: 0; text-wrap: balance; text-shadow: 0 2px 22px rgba(0,0,0,.6);
   }
   .ouv-credit {
-    position: absolute; left: 24px; right: 24px; bottom: 26px; z-index: 2;
+    position: absolute; left: 24px; right: 24px; z-index: 2;
+    bottom: calc(26px + env(safe-area-inset-bottom));
     font-family: "JetBrains Mono", monospace; font-size: 9px; letter-spacing: .05em;
     color: rgba(255,255,255,.38); line-height: 1.5;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .ouv-jauge { position: absolute; top: 0; left: 0; right: 0; height: 2px; z-index: 3; background: rgba(255,255,255,.12); }
+  .ouv-jauge {
+    position: absolute; top: env(safe-area-inset-top); left: 0; right: 0;
+    height: 2px; z-index: 3; background: rgba(255,255,255,.12);
+  }
   .ouv-jauge i { display: block; height: 100%; width: 0; background: rgba(255,255,255,.7); }
   .ouverture.joue .ouv-jauge i { animation: compte 3s linear both; }
   @keyframes compte { from { width: 0; } to { width: 100%; } }
@@ -327,12 +347,13 @@
 
   .panneau {
     position: absolute; inset: 0; z-index: 40; background: var(--ground);
-    overflow-y: auto; padding: 22px 22px calc(30px + env(safe-area-inset-bottom));
+    overflow-y: auto;
+    padding: calc(22px + env(safe-area-inset-top)) 22px calc(30px + env(safe-area-inset-bottom));
     transform: translateY(100%); transition: transform .32s cubic-bezier(.4,0,.2,1);
   }
   .panneau.ouvert { transform: none; }
   .panneau h2 { margin-bottom: 20px; }
-  .fermer { position: absolute; top: 16px; right: 18px; background: none; border: 1px solid var(--rule); color: var(--ink-doux); border-radius: 999px; width: 32px; height: 32px; cursor: pointer; font-size: 15px; }
+  .fermer { position: absolute; top: calc(16px + env(safe-area-inset-top)); right: 18px; background: none; border: 1px solid var(--rule); color: var(--ink-doux); border-radius: 999px; width: 32px; height: 32px; cursor: pointer; font-size: 15px; }
 
   .anneaux { display: flex; gap: 16px; justify-content: center; margin: 4px 0 26px; flex-wrap: wrap; }
   .anneau { text-align: center; width: 84px; }
@@ -375,6 +396,8 @@
       </span>
     </div>
   </div>
+
+  <div class="fond" id="fond"><img alt=""><img alt=""></div>
 
   <div class="flux" id="flux">
     <div class="attente" id="attente">chargement du contenu…</div>
@@ -906,9 +929,26 @@ function ajusterVolets(rendre, passes = 4) {
     const deborde = [...flux.children].some(
       (s) => s.dataset.type === "chapitre" && s.scrollHeight > s.clientHeight + 6
     );
-    if (!deborde || signesParPixel <= 1.0) return;
+    if (!deborde || signesParPixel <= 1.0) break;
     signesParPixel = Math.max(1.0, signesParPixel - 0.3);
     rendre();
+  }
+  degraisserFeed();
+}
+
+/* Une carte de feed ne se decoupe pas en volets : c est une accroche, pas un
+   chapitre. Quand elle deborde sur un petit ecran, on lui retire un paragraphe
+   plutot que de la laisser defiler dans son coin. Le lien vers la source reste,
+   c est lui qui porte la suite. */
+function degraisserFeed() {
+  for (const section of flux.children) {
+    if (section.dataset.type === "chapitre" || section.dataset.type === "cloture") continue;
+    for (let n = 0; n < 3; n++) {
+      if (section.scrollHeight <= section.clientHeight + 6) break;
+      const paragraphes = section.querySelectorAll("p");
+      if (paragraphes.length <= 1) break;
+      paragraphes[paragraphes.length - 1].remove();
+    }
   }
 }
 
@@ -1085,16 +1125,46 @@ const ouvertes = new Set();          // cartes deja ouvertes, pour ne pas rejoue
 
 function poserIllustration(section, v, accent, nomModule) {
   if (!v.image) return;
-  if (v.media_type === "image") section.classList.add("oeuvre");
-  // Meme sans ouverture, la carte n est plus un mur de texte : l illustration
-  // reste en fond, attenuee sous le texte.
-  section.classList.add("image", "illustree");
-  const fond = document.createElement("div");
-  fond.className = "visuel";
+  section.classList.add("illustree");
+
+  // Une oeuvre garde son visuel dans la carte : l image y est cadree en entier
+  // avec son cartel dessous, c est une composition, pas un fond. Tout le reste
+  // passe par le fond partage, qui ne bouge pas d un volet a l autre.
+  if (v.media_type !== "image") return;
+
+  section.classList.add("image", "oeuvre");
+  const zone = document.createElement("div");
+  zone.className = "visuel";
   const img = new Image();
   img.alt = ""; img.src = v.image;
-  fond.appendChild(img);
-  section.insertBefore(fond, section.firstChild);
+  zone.appendChild(img);
+  section.insertBefore(zone, section.firstChild);
+}
+
+/* Pose l image de fond de la carte courante. Ne fait rien si c est deja la
+   bonne : c est ce silence qui rend le fond immobile entre deux volets. */
+function poserFond(v) {
+  const fond = $("fond");
+  const url = (v && v.image && v.media_type !== "image") ? v.image : "";
+  fond.classList.toggle("lecture", v?.type === "chapitre");
+  if (fond.dataset.url === url) return;
+  fond.dataset.url = url;
+
+  const couches = fond.querySelectorAll("img");
+  const actif = fond.querySelector("img.visible");
+  if (!url) {
+    couches.forEach((c) => c.classList.remove("visible"));
+    return;
+  }
+  const dormant = actif === couches[0] ? couches[1] : couches[0];
+  const montrer = () => {
+    dormant.classList.add("visible");
+    if (actif) actif.classList.remove("visible");
+  };
+  if (dormant.getAttribute("src") === url) { montrer(); return; }
+  dormant.src = url;
+  if (dormant.decode) dormant.decode().then(montrer).catch(montrer);
+  else dormant.addEventListener("load", montrer, { once: true });
 }
 
 let sequenceOuverture = 0;
@@ -1214,6 +1284,7 @@ function batirFlux() {
 
   batirSegments();
   peindreEntete(0);
+  poserFond(cartes[0]);
   observerClotures();
   jouerOuverture(0);
   precharger(0, 4);
@@ -1298,7 +1369,11 @@ function peindre() {
     if (centre > precedent) quitter(precedent);
     const index = Math.min(centre, cartes.length - 1);
     peindreEntete(index);
-    jouerOuverture(index);
+    poserFond(cartes[index]);
+    if (destination === null || index === destination) {
+      if (index === destination) { destination = null; clearTimeout(finDuSaut); }
+      jouerOuverture(index);
+    }
     precharger(index + 1);
   }
 }
@@ -1342,7 +1417,25 @@ const estLue = (v) => v && v.id && etat.evenements.some((e) => e.carte === v.id 
 /* ---------- interactions ---------- */
 
 function indexCourant() { return Math.round(flux.scrollTop / (flux.clientHeight || 1)); }
-function allerA(i) { flux.scrollTo({ top: Math.min(i, cartes.length - 1) * flux.clientHeight, behavior: "smooth" }); }
+/* Un saut programme traverse les cartes intermediaires et peut deborder d un
+   cran avant de se caler. On retient donc ou l on va : tant que le defilement
+   n y est pas, les cartes survolees ne declenchent pas leur ouverture. Sans ce
+   garde-fou, terminer un chapitre montre l animation de la carte d apres avant
+   l ecran de fin de chapitre. */
+let destination = null;
+let finDuSaut = null;
+
+function allerA(i) {
+  destination = Math.min(i, cartes.length - 1);
+  clearTimeout(finDuSaut);
+  finDuSaut = setTimeout(() => { destination = null; }, 1200);
+  flux.scrollTo({ top: destination * flux.clientHeight, behavior: "smooth" });
+}
+
+// Un geste de la main reprend la main : le saut n a plus de destination.
+for (const geste of ["touchstart", "wheel", "pointerdown"]) {
+  flux.addEventListener(geste, () => { destination = null; }, { passive: true });
+}
 
 function finUnite(depart) {
   let i = depart;
