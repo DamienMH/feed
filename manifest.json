@@ -1,0 +1,14 @@
+{
+  "name": "Feed",
+  "short_name": "Feed",
+  "description": "Flux de contenu educatif personnel",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#16130e",
+  "theme_color": "#16130e",
+  "icons": [
+    { "src": "icone-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icone-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

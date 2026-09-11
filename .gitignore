@@ -1,0 +1,6 @@
+# Outils locaux, qui n ont rien a faire en ligne
+demo.html
+revue.html
+*.log
+
+# Rien d autre n est exclu : contenu.json et images/ SONT le contenu publie.
