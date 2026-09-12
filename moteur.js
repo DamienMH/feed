@@ -12,7 +12,27 @@ export const POIDS = {
   contexte: 0.4,
   appetence: 0.5,
   monotonie: 0.9,
+  variete: 0.9,
 };
+
+/* Un grain de hasard, stable dans la journee.
+ *
+ * Le score est entierement deterministe, donc l ordre des premieres cartes est
+ * le meme chaque jour : les trois modules les mieux places ouvrent toutes les
+ * sessions, et la lassitude revient par un autre chemin que celui qu on vient
+ * de boucher. On ajoute donc un decalage tire d une empreinte du module et de
+ * la date. Il change chaque nuit, et il ne change pas quand on rouvre
+ * l application dans la journee : un flux qui se reorganise sous les yeux de
+ * celui qui lit est plus desagreable que la monotonie. */
+export function grain(module, jour) {
+  let h = 2166136261;
+  const clef = `${module}|${jour}`;
+  for (let i = 0; i < clef.length; i++) {
+    h ^= clef.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return ((h >>> 0) % 1000) / 1000;
+}
 
 export const MOMENTS = {
   matin: [0, 180],
@@ -225,6 +245,7 @@ function score(carte, ctx) {
     + POIDS.continuite * continuite
     + POIDS.contexte * contexte
     + POIDS.appetence * appetence
+    + POIDS.variete * grain(carte.module, ctx.jour)
     - POIDS.monotonie * monotonie;
 }
 
@@ -239,6 +260,7 @@ export function construireFile(paquet, etat, options = {}) {
     continuites: continuites(paquet, etat),
     recents: derniersModules(etat),
     moment,
+    jour: options.jour || new Date().toISOString().slice(0, 10),
   };
 
   let restantes = candidates(paquet, etat);
@@ -312,16 +334,34 @@ export function construireFile(paquet, etat, options = {}) {
     // qu un jour sur trois, quand l art avait epuise sa dette.
     const dernierFeed = [...file].reverse().find(estFeed);
 
+    // Un ecart minimal entre deux cartes d un meme module.
+    //
+    // C etait le defaut le plus visible a l usage, et il ne se voyait pas en
+    // regardant la composition d une journee entiere, qui est variee. Une file
+    // de vingt cartes devient quatre-vingts a cent volets a l ecran, et on n en
+    // lit qu une poignee par session : seules les premieres cartes existent
+    // vraiment. Or le bonus de continuite favorise les modules lus la veille, et
+    // le plafond de trois chapitres par parcours leur permettait d occuper ces
+    // premieres places. Au bout de quatre jours, les memes deux ou trois sujets
+    // se relayaient en tete pendant que dix autres n apparaissaient jamais.
+    const ecartModule = paquet.reglages?.ecart_module ?? 4;
+    const tropProche = (c) => file.slice(-ecartModule).some((x) => x.module === c.module);
+
     let choisie = restantes.find((c) => {
-      if (!placeLibre(c)) return false;
+      if (!placeLibre(c) || tropProche(c)) return false;
       if ((besoinPlaisir || sansRespiration) && !c.plaisir) return false;
       if ((quotaExigeant || troisExigeantes) && c.exigence === 3) return false;
-      if (file.length && c.module === file[file.length - 1].module && c.type !== "chapitre") return false;
       if (estFeed(c) && dernierFeed && c.module === dernierFeed.module) return false;
       return true;
     });
-    // On relache le lissage avant les quotas, jamais l inverse.
-    if (!choisie) choisie = restantes.find((c) => placeLibre(c) && !(quotaExigeant && c.exigence === 3));
+    // On relache le lissage avant les quotas, jamais l inverse. L ecart entre
+    // modules se relache en dernier, juste avant le plafond de feed : c est lui
+    // qui porte la variete, et la variete est ce qu on vient chercher.
+    if (!choisie) choisie = restantes.find((c) => placeLibre(c) && !tropProche(c)
+      && !(quotaExigeant && c.exigence === 3));
+    if (!choisie) choisie = restantes.find((c) => placeLibre(c) && !tropProche(c));
+    if (!choisie) choisie = restantes.find((c) => placeLibre(c)
+      && !(file.length && c.module === file[file.length - 1].module && c.type !== "chapitre"));
     if (!choisie) choisie = restantes.find(placeLibre);
 
     // Dernier recours : le plafond de feed cede plutot que la journee. Il
@@ -380,27 +420,50 @@ export function journaliser(etat, carte, action, mode = "objectif") {
   return etat;
 }
 
-export function planifierRappel(etat, rappelId, reussi) {
+/* Replanifie un rappel selon ce que la personne dit de sa propre memoire.
+ *
+ * Trois reponses et non deux, parce que "je savais a peu pres" est de loin
+ * l etat le plus courant et que le forcer dans l une des deux cases fausse tout
+ * l espacement : classe en echec, la carte revient demain alors qu elle etait
+ * presque acquise ; classee en reussite, elle part a une semaine alors qu elle
+ * n a tenu que grace a un indice.
+ *
+ * note : 0 = pas du tout, 1 = a peu pres, 2 = facile. Le booleen d avant reste
+ * accepte, parce que d anciennes reponses sont deja enregistrees. */
+export function planifierRappel(etat, rappelId, note) {
+  if (typeof note === "boolean") note = note ? 2 : 0;
+  const niveau = Math.max(0, Math.min(2, Number(note) || 0));
+
   const e = etat.rappels[rappelId] || { intervalle: 1, facilite: 2.5, repetitions: 0 };
   let { intervalle, facilite, repetitions } = e;
 
-  if (reussi) {
-    repetitions += 1;
-    intervalle = repetitions === 1 ? 1 : repetitions === 2 ? 3 : intervalle * facilite;
-    facilite = Math.min(2.8, facilite + 0.1);
-  } else {
+  if (niveau === 0) {
+    // On repart de zero : la carte revient le lendemain, et la facilite baisse
+    // franchement pour que les prochains intervalles restent courts.
     repetitions = 0;
     intervalle = 1;
-    facilite = Math.max(1.3, facilite - 0.25);
+    facilite = Math.max(1.3, facilite - 0.3);
+  } else if (niveau === 1) {
+    // Retrouve avec effort : on avance, mais lentement, et sans recompenser.
+    repetitions += 1;
+    intervalle = repetitions === 1 ? 1 : repetitions === 2 ? 2 : intervalle * 1.5;
+    facilite = Math.max(1.3, facilite - 0.15);
+  } else {
+    repetitions += 1;
+    intervalle = repetitions === 1 ? 2 : repetitions === 2 ? 5 : intervalle * facilite;
+    facilite = Math.min(2.8, facilite + 0.1);
   }
 
+  intervalle = Math.min(intervalle, 180);      // au-dela, c est acquis
   etat.rappels[rappelId] = {
-    prochaine: Date.now() + Math.round(intervalle) * JOUR,
+    prochaine: Date.now() + Math.max(1, Math.round(intervalle)) * JOUR,
     intervalle,
     facilite,
     repetitions,
   };
-  etat.reponses.push({ rappel: rappelId, date: Date.now(), reussi });
+  // reussi reste ecrit pour que le taux de retention garde son sens : on compte
+  // comme retenu ce qui a ete retrouve, meme avec effort.
+  etat.reponses.push({ rappel: rappelId, date: Date.now(), note: niveau, reussi: niveau > 0 });
   return etat;
 }
 

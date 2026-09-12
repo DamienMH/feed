@@ -295,6 +295,9 @@
     background: var(--surface-haute); color: var(--ink); cursor: pointer; flex: 1; min-width: 120px;
   }
   button.pilule.plein { background: var(--accent); border-color: var(--accent); color: #12100c; font-weight: 700; }
+  /* Trois boutons cote a cote sur un telephone : la largeur minimale d une
+     pilule ordinaire les ferait passer a la ligne une par une. */
+  button.pilule.note { min-width: 0; padding: 11px 10px; font-size: 13px; }
   button.pilule:active { transform: scale(.98); }
 
   .fin-chapitre { align-items: center; text-align: center; }
@@ -665,13 +668,16 @@ function elementCarte(v, precedente, suivante) {
   }
 
   if (v._type === "rappel") {
-    html += `<div class="kicker">rappel · déjà lu</div>
+    const rang = v._rang && v._total > 1 ? ` · ${v._rang} sur ${v._total}` : "";
+    html += `<div class="kicker">${v._frais
+      ? `à retenir${rang}` : "rappel · à revoir"}</div>
       <div class="bloc">
         <h2>${echappe(v.q)}</h2>
         <div class="cache" data-reponse><p>${echappe(v.r)}</p>
           <div class="meta-bas">issu de : ${echappe(v.carte.titre)}</div></div>
         <div class="boutons" data-actions>
-          <button class="pilule plein" type="button" data-reveler>Voir la réponse</button>
+          <button class="pilule plein" type="button" data-reveler>${v._frais
+            ? "Voir si c'était ça" : "Voir la réponse"}</button>
         </div>
       </div>`;
     section.innerHTML = html;
@@ -1004,6 +1010,15 @@ function batirFlux(options = {}) {
       cartes.push(...suite);
       if (carte.type === "chapitre") {
         cartes.push({ ...carte, _type: "cloture", _volets: suite.length });
+        // Se tester juste apres avoir lu vaut mieux que relire : c est l effet
+        // de test, et c est le sujet du chapitre 4 du parcours "apprendre". La
+        // question arrive donc immediatement apres l ecran de fin de chapitre,
+        // puis la meme carte revient plus tard, espacee selon la reponse.
+        (carte.rappels || []).forEach((r, i, liste) => {
+          cartes.push({ ...r, module: carte.module, carte,
+                        _type: "rappel", type: "rappel", _frais: true,
+                        _rang: i + 1, _total: liste.length });
+        });
       }
     }
     flux.innerHTML = "";
@@ -1151,6 +1166,11 @@ function noter(v, action) {
 function quitter(index) {
   const v = cartes[index];
   if (!v || !v.id) return;
+  // Une carte de rappel porte l identifiant du rappel, pas celui d une carte de
+  // contenu. Le passer a noter() ferait chercher une carte du paquet portant ce
+  // meme numero, et il en existe : on marquerait alors comme vue une carte qu on
+  // n a jamais ouverte, qui ne reviendrait plus jamais.
+  if (v._type === "rappel") return;
   // Un volet isole ne dit rien du chapitre : c est la carte de fin qui tranche.
   if (v.type === "chapitre" && v._type !== "cloture") return;
   noter(v, "vue");
@@ -1364,18 +1384,25 @@ flux.addEventListener("click", (e) => {
   }
   if (e.target.matches("[data-reveler]")) {
     section.querySelector("[data-reponse]").classList.remove("cache");
+    // Trois niveaux : "a peu pres" est l etat le plus courant, et le ranger de
+    // force dans l une des deux autres cases faussait tout l espacement.
     section.querySelector("[data-actions]").innerHTML =
-      `<button class="pilule" type="button" data-su="0">Je ne savais pas</button>
-       <button class="pilule plein" type="button" data-su="1">Je savais</button>`;
+      `<button class="pilule note" type="button" data-su="0">Pas du tout</button>
+       <button class="pilule note" type="button" data-su="1">À peu près</button>
+       <button class="pilule note plein" type="button" data-su="2">Facile</button>`;
     return;
   }
   if (e.target.matches("[data-su]")) {
-    const su = e.target.dataset.su === "1";
-    const v = cartes[indexCourant()];
-    M.planifierRappel(etat, v.id ?? v.rappelId ?? v.q, su);
+    const note = Number(e.target.dataset.su);
+    // La carte cliquee, pas celle que la position du flux laisse deviner.
+    const rang = [...flux.children].indexOf(section);
+    const v = cartes[rang >= 0 ? rang : indexCourant()];
+    M.planifierRappel(etat, v.id ?? v.rappelId ?? v.q, note);
     M.sauverEtat(etat);
-    annoncer(su ? "revu plus tard" : "revu demain");
-    setTimeout(avancer, 300);
+    const quand = etat.rappels[v.id ?? v.rappelId ?? v.q];
+    const jours = Math.max(1, Math.round((quand.prochaine - Date.now()) / 86400000));
+    annoncer(jours === 1 ? "revu demain" : `revu dans ${jours} jours`);
+    setTimeout(avancer, 320);
   }
 });
 
