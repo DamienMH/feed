@@ -1360,7 +1360,12 @@ function basculerPlein(section, actif) {
   if (actif && !image) return;
   if (actif) {
     calque.querySelector("img").src = image.currentSrc || image.src;
-    const v = cartes[indexCourant()];
+    // Le cartel doit venir de la carte sur laquelle on a appuye, pas de celle
+    // que la position du flux laisse deviner : indexCourant() arrondit, et un
+    // pouce pose entre deux cartes donnait le titre de la voisine, donc une
+    // tapisserie du Met legendee par un article d informatique.
+    const rang = [...flux.children].indexOf(section);
+    const v = cartes[rang >= 0 ? rang : indexCourant()];
     calque.querySelector(".credit-plein").textContent =
       [v?.titre, v?.extrait].filter(Boolean).join(" · ");
   }
@@ -1588,6 +1593,10 @@ function rendreReglages() {
       const liste = new Set(M.modulesActifs(paquet, etat).map((m) => m.id));
       liste.has(id) ? liste.delete(id) : liste.add(id);
       etat.modulesActifs = [...liste];
+      // On note aussi les modules que ce reglage a vus : ceux qui arriveront
+      // plus tard dans le paquet suivront leur propre statut au lieu d etre
+      // exclus par une liste qui ne les connaissait pas.
+      etat.modulesVus = paquet.modules.map((m) => m.id);
       if (!etat.activation[id]) etat.activation[id] = Date.now();
       M.sauverEtat(etat);
       b.classList.toggle("on");

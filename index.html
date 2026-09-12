@@ -491,6 +491,7 @@ function etatVide() {
     sessions: {},        // AAAA-MM-JJ -> { objectif, vues, atteint, bonusSec }
     activation: {},      // module -> date d activation
     modulesActifs: null, // null = ceux du paquet
+    modulesVus: null,    // modules connus quand la liste ci-dessus a ete ecrite
   };
 }
 
@@ -535,8 +536,16 @@ function dettes(paquet, etat) {
       resultat[module.id] = 0;          // rien n est encore du
       continue;
     }
+    // Une carte de feed ne se "termine" pas : on la regarde et on passe. Seuls
+    // les chapitres emettent "terminee", a leur ecran de cloture. Tant que la
+    // dette d un module de feed ne comptait que ces evenements-la, elle restait
+    // bloquee a son maximum quoi qu on lise, et les trois modules de feed
+    // gagnaient toutes les places de la file devant les parcours.
+    const consommee = module.format === "feed"
+      ? (e) => e.action === "terminee" || e.action === "vue"
+      : (e) => e.action === "terminee";
     const realise = etat.evenements.filter(
-      (e) => e.action === "terminee" && e.module === module.id && e.date >= depuis
+      (e) => consommee(e) && e.module === module.id && e.date >= depuis
     ).length;
     resultat[module.id] = Math.max(0, Math.min(1, (attendu - realise) / attendu));
   }
@@ -579,8 +588,16 @@ function derniersModules(etat, combien = 3) {
 
 function modulesActifs(paquet, etat) {
   const choisis = etat.modulesActifs;
+  if (!choisis) return paquet.modules.filter((m) => m.statut === "actif");
+
+  // Un module arrive dans le paquet apres le dernier passage par les reglages
+  // n a jamais ete decoche par personne. Le mesurer a une liste figee le
+  // laisserait invisible pour toujours, sans que rien ne le signale : on ne
+  // tient donc la liste que pour les modules qui existaient quand elle a ete
+  // ecrite, et les autres suivent le statut du paquet.
+  const connus = new Set(etat.modulesVus || choisis);
   return paquet.modules.filter((m) =>
-    choisis ? choisis.includes(m.id) : m.statut === "actif"
+    connus.has(m.id) ? choisis.includes(m.id) : m.statut === "actif"
   );
 }
 
@@ -680,37 +697,103 @@ function construireFile(paquet, etat, options = {}) {
 
   const exigeantMax = paquet.reglages?.mix_exigeant_max ?? 4;
   const plaisirMin = paquet.reglages?.mix_plaisir_min ?? 3;
+  // Part maximale de cartes de feed dans la file. Sans plafond, ce sont elles
+  // qui remplissent tout : elles sont nombreuses, toujours disponibles, et ce
+  // sont les seules marquees plaisir, donc elles gagnent aussi les places que
+  // la regle de respiration reserve. On se retrouve avec dix-huit cartes de
+  // feed sur vingt, soit exactement le scroll qu on voulait remplacer.
+  const partFeed = paquet.reglages?.part_feed ?? 0.25;
+  const chapitresParModule = paquet.reglages?.chapitres_par_module ?? 3;
+
+  // Le chapitre qui suit chacun, dans son propre parcours. candidates() n en
+  // expose qu un par module, celui qui est du : avec neuf parcours, la file
+  // plafonnait donc a neuf chapitres, et le reste de la journee ne pouvait
+  // etre rempli que par du feed. On ouvre le suivant au fur et a mesure, ce
+  // qui garde l ordre de lecture sans brider la longueur de la seance.
+  const suivant = new Map();
+  const parParcours = {};
+  for (const carte of paquet.cartes) {
+    if (carte.type !== "chapitre") continue;
+    (parParcours[carte.module] = parParcours[carte.module] || []).push(carte);
+  }
+  const dejaVue = new Set(
+    etat.evenements.filter((e) => ["vue", "terminee", "passee"].includes(e.action))
+      .map((e) => e.carte)
+  );
+  for (const liste of Object.values(parParcours)) {
+    liste.sort((a, b) => (a.chapitre || 0) - (b.chapitre || 0));
+    liste.forEach((carte, i) => suivant.set(carte.id, liste[i + 1] || null));
+  }
 
   const file = [];
+  const estFeed = (c) => c.type !== "chapitre";
+  const comptesParcours = {};
   while (file.length < taille && restantes.length) {
     const position = file.length % 10;
     const tranche = position ? file.slice(-position) : [];
     const exigeantes = tranche.filter((c) => c.exigence === 3).length;
     const plaisirs = tranche.filter((c) => c.plaisir).length;
 
+    // Quota courant, reparti regulierement plutot que consomme d un bloc : a
+    // un quart, les cartes de feed tombent aux positions 1, 5, 9, 13 et 17.
+    const placesFeed = Math.ceil((file.length + 1) * partFeed);
+    const feedPleine = file.filter(estFeed).length >= placesFeed;
+
     const quotaExigeant = exigeantes >= exigeantMax;
-    const besoinPlaisir = plaisirMin - plaisirs >= 10 - position;
+    const besoinPlaisir = !feedPleine && plaisirMin - plaisirs >= 10 - position;
 
     // Lissage local : les quotas seuls laisseraient passer sept cartes d effort
     // d affilee suivies d un bloc de plaisir, ce qui est le mur qui fait
     // abandonner. On interdit donc trois exigeantes de suite et on impose une
     // respiration au moins toutes les quatre cartes.
     const troisExigeantes = file.length >= 2 && file.slice(-2).every((c) => c.exigence === 3);
-    const sansRespiration = file.length >= 3 && !file.slice(-3).some((c) => c.plaisir);
+    const sansRespiration = !feedPleine && file.length >= 3
+      && !file.slice(-3).some((c) => c.plaisir);
+
+    const placeLibre = (c) => !(feedPleine && estFeed(c))
+      && !(c.type === "chapitre" && (comptesParcours[c.module] || 0) >= chapitresParModule);
+
+    // Les cartes de feed sont rares dans la journee : autant qu elles ne
+    // viennent pas toutes du meme endroit. Sans cette regle, les cinq places
+    // partaient au module le mieux fourni et la litterature n apparaissait
+    // qu un jour sur trois, quand l art avait epuise sa dette.
+    const dernierFeed = [...file].reverse().find(estFeed);
 
     let choisie = restantes.find((c) => {
+      if (!placeLibre(c)) return false;
       if ((besoinPlaisir || sansRespiration) && !c.plaisir) return false;
       if ((quotaExigeant || troisExigeantes) && c.exigence === 3) return false;
       if (file.length && c.module === file[file.length - 1].module && c.type !== "chapitre") return false;
+      if (estFeed(c) && dernierFeed && c.module === dernierFeed.module) return false;
       return true;
     });
     // On relache le lissage avant les quotas, jamais l inverse.
-    if (!choisie) choisie = restantes.find((c) => !(quotaExigeant && c.exigence === 3));
+    if (!choisie) choisie = restantes.find((c) => placeLibre(c) && !(quotaExigeant && c.exigence === 3));
+    if (!choisie) choisie = restantes.find(placeLibre);
+
+    // Dernier recours : le plafond de feed cede plutot que la journee. Il
+    // gouverne la composition tant qu il reste des chapitres a lire, mais s il
+    // n en reste plus, s y tenir ne laisserait que deux ou trois cartes a
+    // l ouverture, et une application vide n apprend rien a personne. Le
+    // plafond regle le dosage, il n est pas un interrupteur.
     if (!choisie) choisie = restantes[0];
+    if (!choisie) break;
 
     file.push(choisie);
     restantes = restantes.filter((c) => c.id !== choisie.id);
     ctx.recents = [choisie.module, ...ctx.recents].slice(0, 3);
+
+    if (choisie.type === "chapitre") {
+      comptesParcours[choisie.module] = (comptesParcours[choisie.module] || 0) + 1;
+      // Le chapitre d apres devient lisible maintenant qu on vient de prendre
+      // celui-ci, et il entre dans le classement a sa place, pas en tete.
+      const apres = suivant.get(choisie.id);
+      if (apres && !dejaVue.has(apres.id) && !restantes.some((c) => c.id === apres.id)) {
+        notes.set(apres.id, score(apres, ctx));
+        const rang = restantes.findIndex((c) => notes.get(c.id) < notes.get(apres.id));
+        restantes.splice(rang < 0 ? restantes.length : rang, 0, apres);
+      }
+    }
   }
   return file;
 }
@@ -1756,7 +1839,12 @@ function basculerPlein(section, actif) {
   if (actif && !image) return;
   if (actif) {
     calque.querySelector("img").src = image.currentSrc || image.src;
-    const v = cartes[indexCourant()];
+    // Le cartel doit venir de la carte sur laquelle on a appuye, pas de celle
+    // que la position du flux laisse deviner : indexCourant() arrondit, et un
+    // pouce pose entre deux cartes donnait le titre de la voisine, donc une
+    // tapisserie du Met legendee par un article d informatique.
+    const rang = [...flux.children].indexOf(section);
+    const v = cartes[rang >= 0 ? rang : indexCourant()];
     calque.querySelector(".credit-plein").textContent =
       [v?.titre, v?.extrait].filter(Boolean).join(" · ");
   }
@@ -1984,6 +2072,10 @@ function rendreReglages() {
       const liste = new Set(M.modulesActifs(paquet, etat).map((m) => m.id));
       liste.has(id) ? liste.delete(id) : liste.add(id);
       etat.modulesActifs = [...liste];
+      // On note aussi les modules que ce reglage a vus : ceux qui arriveront
+      // plus tard dans le paquet suivront leur propre statut au lieu d etre
+      // exclus par une liste qui ne les connaissait pas.
+      etat.modulesVus = paquet.modules.map((m) => m.id);
       if (!etat.activation[id]) etat.activation[id] = Date.now();
       M.sauverEtat(etat);
       b.classList.toggle("on");
