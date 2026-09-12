@@ -298,6 +298,18 @@
   /* Trois boutons cote a cote sur un telephone : la largeur minimale d une
      pilule ordinaire les ferait passer a la ligne une par une. */
   button.pilule.note { min-width: 0; padding: 11px 10px; font-size: 13px; }
+
+  /* ---- schema ----
+     Un volet entier, centre verticalement. Le dessin herite de la couleur du
+     texte et de l accent du module, ce qui lui evite d avoir sa propre palette
+     et le fait vivre avec le theme au lieu de flotter dessus. */
+  .carte.avec-schema { display: flex; flex-direction: column; }
+  .schema { margin: 0; flex: 1; display: flex; flex-direction: column; justify-content: center; }
+  .schema svg { width: 100%; height: auto; display: block; color: var(--ink); overflow: visible; }
+  .schema figcaption {
+    margin-top: 20px; font-family: "Karla", sans-serif; font-size: 12.5px;
+    color: var(--ink-doux); text-align: center; line-height: 1.45;
+  }
   button.pilule:active { transform: scale(.98); }
 
   .fin-chapitre { align-items: center; text-align: center; }
@@ -556,9 +568,24 @@ function volets(carte) {
   }
   if (courant.length) morceaux.push(courant);
 
-  return morceaux.map((p, i) => ({
-    ...carte, _volet: i + 1, _volets: morceaux.length, _paragraphes: p,
-  }));
+  const suite = morceaux.map((p) => ({ ...carte, _paragraphes: p }));
+
+  // Le schema occupe son propre volet, jamais le bas d un volet de texte : pose
+  // sous des paragraphes, il fait deborder la carte de plusieurs dizaines de
+  // pixels, et il se retrouve coupe ou illisible. Il s insere apres le volet qui
+  // contient le paragraphe designe par schema_apres, c est-a-dire au moment ou
+  // le mecanisme vient d etre pose et ou le voir sert encore a quelque chose.
+  if (carte.schema) {
+    let vus = 0, place = suite.length - 1;
+    const cible = carte.schema_apres || 2;
+    for (let i = 0; i < suite.length; i++) {
+      vus += suite[i]._paragraphes.length;
+      if (vus >= cible) { place = i; break; }
+    }
+    suite.splice(place + 1, 0, { ...carte, _schema: true, _paragraphes: [] });
+  }
+
+  return suite.map((v, i) => ({ ...v, _volet: i + 1, _volets: suite.length }));
 }
 
 /* Le calcul ci-dessus est une estimation : la vraie hauteur d un paragraphe
@@ -695,6 +722,14 @@ function elementCarte(v, precedente, suivante) {
     if (v._volets > 1) {
       html += `<div class="volets">${Array.from({ length: v._volets }, (_, i) =>
         `<i class="volet-pt${i < v._volet ? " on" : ""}"></i>`).join("")}</div>`;
+    }
+    if (v._schema) {
+      html += `<figure class="schema">${v.schema}${v.schema_legende
+        ? `<figcaption>${echappe(v.schema_legende)}</figcaption>` : ""}</figure>`;
+      section.innerHTML = html;
+      section.classList.add("avec-schema");
+      poserIllustration(section, v, accent, nomModule);
+      return section;
     }
     html += v._paragraphes
       .map((p) => p.replace(/\*\*(.*?)\*\*/g, "$1"))
