@@ -84,7 +84,9 @@
   .flux::-webkit-scrollbar { display: none; }
   .carte {
     scroll-snap-align: start; scroll-snap-stop: always; height: 100%;
-    padding: 2px 22px 96px; display: flex; flex-direction: column;
+    /* La reserve du bas doit couvrir la barre d actions ET l indicateur
+       d accueil de l iPhone, sinon la derniere ligne passe dessous. */
+    padding: 2px 22px calc(96px + env(safe-area-inset-bottom)); display: flex; flex-direction: column;
     justify-content: center; position: relative;
     /* Pas d overscroll-behavior: contain ici. Une carte qui deborde devient
        son propre conteneur de defilement, et "contain" empeche alors le geste
@@ -184,34 +186,33 @@
   }
   .tel.plein .haut, .tel.plein .bas { opacity: 0; pointer-events: none; }
   .haut, .bas { transition: opacity .3s ease; }
-  .carte.plein { overflow: hidden; }
-  .carte.plein > *:not(.visuel) { opacity: 0; pointer-events: none; }
-  .carte.plein .visuel { background: #07070a; }
-  .carte.plein .visuel::after { opacity: 0; }
-  .carte.plein .visuel img { object-fit: contain; }
-  .carte > *:not(.visuel) { transition: opacity .3s ease; }
-  .carte .visuel img, .carte .visuel::after { transition: opacity .3s ease; }
-  .sortir-plein {
-    position: absolute; left: 50%; transform: translateX(-50%); z-index: 7;
+
+  /* La contemplation ne se joue pas dans la carte : le flux commence sous
+     l en-tete, donc une image stylee a l interieur ne pourra jamais atteindre
+     le haut de l ecran. On la montre dans un calque pose sur le telephone
+     entier, ce qui evite aussi de toucher aux hauteurs et de deranger le
+     calage des cartes. */
+  .contemplation {
+    position: absolute; inset: 0; z-index: 40; background: #07070a;
+    display: none; place-items: center; cursor: pointer;
+  }
+  .contemplation.ouvert { display: grid; animation: surgit .25s ease both; }
+  @keyframes surgit { from { opacity: 0; } to { opacity: 1; } }
+  .contemplation img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+  .contemplation .sortir-plein {
+    position: absolute; left: 50%; transform: translateX(-50%); z-index: 2;
     bottom: calc(26px + env(safe-area-inset-bottom));
     font-family: "JetBrains Mono", monospace; font-size: 10px; letter-spacing: .12em;
-    text-transform: uppercase; color: rgba(255,255,255,.55);
-    opacity: 0; pointer-events: none; transition: opacity .3s ease .1s;
+    text-transform: uppercase; color: rgba(255,255,255,.5);
+    animation: parait .5s ease .6s both;
   }
-  .carte.plein .sortir-plein { opacity: 1; }
-
-  /* Une oeuvre n est pas un fond d ecran. "cover" remplit la carte mais ampute
-     le tableau, ce qui sur un format large ne laisse voir qu un coin. On lui
-     donne donc la moitie haute, entiere, et le cartel se pose en dessous sur le
-     fond, sans rien recouvrir. */
-  .carte.oeuvre .visuel { inset: 0 0 38% 0; padding: 0 0 10px; }
-  .carte.oeuvre .visuel img { object-fit: contain; object-position: center bottom; }
-  .carte.oeuvre .visuel::after {
-    background: linear-gradient(180deg, rgba(0,0,0,.35) 0%, transparent 22%,
-                                transparent 72%, var(--ground) 100%);
-    opacity: 1;
+  .contemplation .credit-plein {
+    position: absolute; left: 24px; right: 24px; z-index: 2;
+    top: calc(18px + env(safe-area-inset-top));
+    font-family: "JetBrains Mono", monospace; font-size: 10px;
+    color: rgba(255,255,255,.42); text-align: center;
+    animation: parait .5s ease .6s both;
   }
-  .carte.oeuvre { justify-content: flex-end; }
 
   .carte.image { justify-content: flex-end; }
   .carte.image > *:not(.visuel):not(.loupe):not(.sortir-plein) { position: relative; z-index: 1; }
@@ -336,6 +337,15 @@
   .act-lu { flex: 1; background: var(--surface-haute) !important; border: 1px solid var(--rule) !important; border-radius: 999px; color: var(--ink) !important; font-weight: 700 !important; }
   .act-icone { width: 46px; height: 46px; border-radius: 50%; border: 1px solid var(--rule) !important; display: grid; place-items: center; font-size: 17px !important; }
   .act-icone.actif { color: #d98e8e !important; border-color: #d98e8e !important; }
+  .act-lire.actif { color: #8fb996 !important; border-color: #8fb996 !important; }
+
+  .liste-lire { margin-top: 2px; }
+  .liste-lire .ligne { align-items: flex-start; }
+  .lire-titre { font-size: 14px; line-height: 1.35; }
+  .lire-auteur { font-size: 12px; color: var(--ink-faible); margin-top: 2px; }
+  .lire-liens { display: flex; gap: 12px; margin-top: 5px; font-family: "JetBrains Mono", monospace; font-size: 10.5px; }
+  .lire-liens a { color: var(--ink-doux); }
+  .oter { background: none; border: none; color: var(--ink-faible); cursor: pointer; font-size: 16px; padding: 2px 6px; flex: none; }
 
   .retour {
     position: absolute; left: 50%; transform: translateX(-50%); bottom: 74px; z-index: 30;
@@ -405,10 +415,18 @@
 
   <div class="ouverture" id="ouverture"></div>
 
+  <div class="contemplation" id="contemplation">
+    <img alt="">
+    <div class="credit-plein"></div>
+    <div class="sortir-plein">toucher pour revenir</div>
+  </div>
+
   <div class="retour" id="retour"></div>
 
   <div class="bas" id="bas" style="display:none">
     <button type="button" class="act-lu" id="b-lu">J'ai lu</button>
+    <button type="button" class="act-icone act-lire" id="b-lire"
+            aria-label="Ajouter à ma liste de lecture" style="display:none">&#128278;</button>
     <button type="button" class="act-icone" id="b-aime" aria-label="J'aime">&#9829;</button>
   </div>
 
@@ -453,6 +471,22 @@ const $ = (id) => document.getElementById(id);
 const flux = $("flux");
 
 /* ---------- chargement du paquet ---------- */
+
+/* On attend les polices avant de decouper.
+ *
+ * Le decoupage en volets se regle sur une mesure du texte affiche. Tant que
+ * Karla et Instrument Serif ne sont pas chargees, le navigateur rend avec sa
+ * police de repli, plus compacte : la mesure conclut que tout tient, puis les
+ * vraies polices arrivent, le texte enfle et deborde. La course est donc
+ * perdue d avance si on mesure trop tot. Le delai de garde evite de bloquer
+ * l application si les polices ne viennent jamais, hors ligne par exemple. */
+async function policesPretes(delaiMax = 2500) {
+  if (!document.fonts?.ready) return;
+  await Promise.race([
+    document.fonts.ready,
+    new Promise((r) => setTimeout(r, delaiMax)),
+  ]);
+}
 
 async function charger() {
   if (typeof PAQUET !== "undefined" && PAQUET) return PAQUET;
@@ -671,10 +705,6 @@ function elementCarte(v, precedente, suivante) {
     loupe.setAttribute("aria-label", "Voir l’image en plein écran");
     loupe.innerHTML = "&#10530;";
     section.appendChild(loupe);
-    const sortie = document.createElement("div");
-    sortie.className = "sortir-plein";
-    sortie.textContent = "toucher pour revenir";
-    section.appendChild(sortie);
   }
   return section;
 }
@@ -832,6 +862,76 @@ function jouerOuverture(index) {
     ${v.image_credit ? `<div class="ouv-credit">${echappe(v.image_credit)}</div>` : ""}`;
   o.classList.add("joue");
   o._t = setTimeout(fermerOuverture, DUREE_OUVERTURE);
+  surveillerFausseOuverture(cle, flux.scrollTop);
+}
+
+/* Deuxieme garde-fou, celui qui ne suppose rien du navigateur.
+ *
+ * Meme immobile trois images d affilee, une position peut n etre qu une halte
+ * dans un mouvement qui reprend. Si le defilement repart dans la demi-seconde,
+ * c est que l ouverture s est declenchee sur une carte de passage : on l efface
+ * et on lui rend son tour, pour qu elle se rejoue quand on y arrivera vraiment.
+ * Aucune prediction ici, seulement un constat apres coup. */
+function surveillerFausseOuverture(cle, depart) {
+  const o = $("ouverture");
+  const limite = performance.now() + 500;
+  const verifier = () => {
+    if (o.dataset.cle !== cle || !o.classList.contains("joue")) return;
+    if (Math.abs(flux.scrollTop - depart) > flux.clientHeight * 0.05) {
+      ouvertes.delete(cle);
+      clearTimeout(o._t);
+      o.classList.remove("joue", "sortie");
+      o.innerHTML = "";
+      o.dataset.cle = "";
+      return;
+    }
+    if (performance.now() < limite) requestAnimationFrame(verifier);
+  };
+  requestAnimationFrame(verifier);
+}
+
+/* Un debordement constate a l usage vaut mieux qu une mesure faite une fois.
+ *
+ * Le decoupage se regle sur une mesure prise au chargement. Tout ce qui change
+ * les dimensions du texte apres coup lui echappe : une police qui arrive en
+ * retard, une rotation, un reglage d accessibilite qui grossit les caracteres.
+ * On verifie donc la carte courante a chaque fois qu elle change, et on refait
+ * le decoupage si elle deborde. Deux fois au maximum, pour ne pas boucler sur
+ * un texte que rien ne fera tenir. */
+let recalagesRestants = 2;
+
+/* Reconstruire en restaurant la position en PIXELS est pire que le mal : apres
+   un nouveau decoupage, le meme nombre de pixels ne designe plus la meme carte,
+   et on se retrouve avec l en-tete d un module sur le contenu d un autre. On
+   repere donc la carte par son identite, chapitre et volet, et on la retrouve
+   apres coup. La file elle-meme n est pas rejouee : changer la selection sous
+   les yeux de celui qui lit serait pire encore. */
+function reconstruire() {
+  const index = Math.min(Math.round(flux.scrollTop / (flux.clientHeight || 1)),
+                         Math.max(0, cartes.length - 1));
+  const repere = cartes[index];
+  const identite = (v) => `${v.id}:${v._volet || 1}:${v._type || ""}`;
+  const cle = repere ? identite(repere) : null;
+
+  batirFlux({ conserverFile: true });
+  calculerTeintes();
+
+  let cible = cle === null ? 0 : cartes.findIndex((v) => identite(v) === cle);
+  if (cible < 0 && repere) cible = cartes.findIndex((v) => v.id === repere.id);
+  cible = Math.max(0, cible);
+
+  flux.scrollTo({ top: cible * flux.clientHeight, behavior: "instant" });
+  dernierCentre = -1;                 // force le repeint de l en-tete et du fond
+  peindre();
+}
+
+function verifierDebordement(index) {
+  if (recalagesRestants <= 0) return;
+  const section = flux.children[index];
+  if (!section || section.scrollHeight <= section.clientHeight + 6) return;
+  recalagesRestants -= 1;
+  signesParPixel = Math.max(1.0, signesParPixel - 0.3);
+  reconstruire();
 }
 
 /* Les images des cartes suivantes sont chargees d avance : une ouverture qui
@@ -853,10 +953,17 @@ precharger._vues = new Set();
 
 /* ---------- construction du flux ---------- */
 
-function batirFlux() {
+function batirFlux(options = {}) {
+  // conserverFile : on refait le decoupage et le rendu, pas le choix des cartes.
+  // Rejouer la selection en pleine lecture changerait le flux sous les yeux de
+  // celui qui lit, ce qui est exactement ce qu il ne faut jamais faire.
   const objectif = etat.objectif || paquet.reglages?.objectif_cartes_jour || 12;
-  file = M.construireFile(paquet, etat, { taille: objectif, mode });
-  const dus = mode === "objectif" ? M.rappelsDus(etat, paquet) : [];
+  if (!options.conserverFile || !file.length) {
+    file = M.construireFile(paquet, etat, { taille: objectif, mode });
+  }
+  const dus = options.conserverFile
+    ? cartes.filter((v) => v._type === "rappel")
+    : (mode === "objectif" ? M.rappelsDus(etat, paquet) : []);
 
   // Le decoupage et le rendu sont refaits tels quels si une mesure montre
   // qu un volet deborde : c est le seul moyen fiable de savoir ce qui tient.
@@ -887,12 +994,13 @@ function batirFlux() {
   ajusterVolets(rendre);
 
   batirSegments();
-  peindreEntete(0);
-  poserFond(cartes[0]);
   observerClotures();
-  jouerOuverture(0);
-  precharger(0, 4);
-  clearTimeout(auRepos);
+  if (!options.conserverFile) {
+    peindreEntete(0);
+    poserFond(cartes[0]);
+    jouerOuverture(0);
+    precharger(0, 4);
+  }
 }
 
 function batirSegments() {
@@ -975,20 +1083,69 @@ function peindre() {
     const index = Math.min(centre, cartes.length - 1);
     peindreEntete(index);
     poserFond(cartes[index]);
+    atteindre(index);
     precharger(index + 1);
+    verifierDebordement(index);
   }
 }
 
 /* Une carte laissee derriere soi sans un geste est un desinteret discret : on
    l enregistre, sans jamais demander a Damien de cliquer pour dire qu il
    n aime pas. Les chapitres en sont exclus, on les traverse volet par volet. */
+function dejaNote(id, actions = ["vue", "terminee", "passee", "aimee"]) {
+  return etat.evenements.some((e) => e.carte === id && actions.includes(e.action));
+}
+
+function noter(v, action) {
+  if (!v || !v.id || dejaNote(v.id)) return false;
+  const carte = paquet.cartes.find((c) => c.id === v.id);
+  if (!carte) return false;
+  M.journaliser(etat, carte, action, mode);
+  sauver();
+  return true;
+}
+
+/* Une carte laissee derriere soi est consommee, et doit cesser de revenir.
+ *
+ * Tant que seul un appui sur "J ai lu" comptait, traverser tout un chapitre en
+ * swipant ne laissait aucune trace : a la reouverture, le moteur reconstruisait
+ * la meme file et on retombait sur le meme chapitre indefiniment. On enregistre
+ * donc le passage, avec l action "vue" : elle exclut la carte des prochaines
+ * files sans peser sur l appetence, contrairement a "passee" qui vaut rejet.
+ * Il n y a aucune raison de compter comme un desinteret une carte qu on vient
+ * justement de lire. */
 function quitter(index) {
   const v = cartes[index];
-  if (!v || !v.id || (v._volets || 1) > 1 || v.type === "chapitre") return;
-  if (etat.evenements.some((e) => e.carte === v.id
-      && ["terminee", "passee", "aimee"].includes(e.action))) return;
-  const carte = paquet.cartes.find((c) => c.id === v.id);
-  if (carte) { M.journaliser(etat, carte, "passee", mode); M.sauverEtat(etat); }
+  if (!v || !v.id) return;
+  // Un volet isole ne dit rien du chapitre : c est la carte de fin qui tranche.
+  if (v.type === "chapitre" && v._type !== "cloture") return;
+  noter(v, "vue");
+}
+
+/* Fermer l application sur une carte vaut passage : sinon la derniere carte du
+   flux, celle qu on ne quitte jamais, reviendrait a chaque ouverture. */
+for (const evenement of ["pagehide", "blur"]) {
+  window.addEventListener(evenement, () => quitter(indexCourant()));
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") quitter(indexCourant());
+});
+
+/* Atteindre la carte de fin de chapitre, c est l avoir lu. C est le seul
+   endroit ou le passage vaut achevement, et il fait avancer l objectif du
+   jour comme le ferait un appui sur "J ai lu". */
+function atteindre(index) {
+  const v = cartes[index];
+  if (!v || v._type !== "cloture" || dejaNote(v.id)) return;
+  if (!noter(v, "terminee")) return;
+  const session = M.sessionDuJour(etat, etat.objectif || 12);
+  session.vues += 1;
+  if (session.vues >= session.objectif && !session.atteint) {
+    session.atteint = true;
+    setTimeout(() => ouvrirFin(), 400);
+  }
+  sauver();
+  peindreEntete(index);
 }
 
 function peindreEntete(index) {
@@ -1011,6 +1168,10 @@ function peindreEntete(index) {
   const sansActions = v._type === "cloture" || v._type === "rappel";
   $("bas").style.display = sansActions ? "none" : "flex";
   $("b-aime").classList.remove("actif");
+
+  const lire = $("b-lire");
+  lire.style.display = v.oeuvre ? "grid" : "none";
+  lire.classList.toggle("actif", !!v.oeuvre && estDansListe(v.oeuvre));
 }
 
 const estLue = (v) => v && v.id && etat.evenements.some((e) => e.carte === v.id && e.action === "terminee");
@@ -1072,6 +1233,39 @@ function sauver() {
   return ok;
 }
 
+/* Liste de lecture.
+ *
+ * Une carte qui presente une oeuvre porte de quoi la retrouver : titre, auteur,
+ * lien vers le texte integral. Si le resume convainc, un geste suffit a la
+ * mettre de cote. La liste vit dans le telephone, comme la progression, et se
+ * consulte dans l ecran de progression. */
+function listeLecture() {
+  if (!Array.isArray(etat.aLire)) etat.aLire = [];
+  return etat.aLire;
+}
+
+function estDansListe(oeuvre) {
+  return listeLecture().some((o) => o.titre === oeuvre?.titre);
+}
+
+function basculerLire() {
+  const v = cartes[indexCourant()];
+  if (!v?.oeuvre) return;
+  const liste = listeLecture();
+  const place = liste.findIndex((o) => o.titre === v.oeuvre.titre);
+  if (place >= 0) {
+    liste.splice(place, 1);
+    annoncer("retirée de la liste");
+  } else {
+    liste.push({ ...v.oeuvre, source: v.url || null, date: Date.now() });
+    annoncer("ajoutée à ta liste de lecture");
+  }
+  sauver();
+  $("b-lire").classList.toggle("actif", estDansListe(v.oeuvre));
+}
+
+$("b-lire").addEventListener("click", basculerLire);
+
 function marquer(action) {
   const v = cartes[indexCourant()];
   if (!v || !v.id) return;
@@ -1113,11 +1307,23 @@ $("b-aime").addEventListener("click", () => {
 });
 
 function basculerPlein(section, actif) {
-  section.classList.toggle("plein", actif);
+  const calque = $("contemplation");
+  const image = section?.querySelector(".visuel img");
+
+  if (actif && !image) return;
+  if (actif) {
+    calque.querySelector("img").src = image.currentSrc || image.src;
+    const v = cartes[indexCourant()];
+    calque.querySelector(".credit-plein").textContent =
+      [v?.titre, v?.extrait].filter(Boolean).join(" · ");
+  }
+  calque.classList.toggle("ouvert", actif);
   $("tel").classList.toggle("plein", actif);
   // Le flux ne doit pas defiler sous l image pendant qu on la regarde.
   flux.style.overflowY = actif ? "hidden" : "auto";
 }
+
+$("contemplation").addEventListener("click", () => basculerPlein(null, false));
 
 flux.addEventListener("click", (e) => {
   const section = e.target.closest(".carte");
@@ -1125,10 +1331,6 @@ flux.addEventListener("click", (e) => {
 
   if (e.target.matches("[data-plein]")) {
     basculerPlein(section, true);
-    return;
-  }
-  if (section.classList.contains("plein")) {
-    basculerPlein(section, false);
     return;
   }
   if (e.target.matches("[data-reveler]")) {
@@ -1150,33 +1352,59 @@ flux.addEventListener("click", (e) => {
 
 $("ouverture").addEventListener("click", fermerOuverture);
 
-/* L ouverture attend l immobilite, pas le changement de carte.
+/* L ouverture attend l immobilite reelle, mesuree image par image.
  *
- * Se fier au numero de la carte centree ne marche pas : pendant un lancer de
- * doigt, Safari fait passer la position bien au-dela de la carte visee avant de
- * la ramener, et chaque carte ainsi survolee declenchait son animation. Se fier
- * a un delai fixe ne marche pas non plus, c est ce qui donnait cette demi-
- * seconde de latence.
+ * Trois approches ont echoue avant celle-ci, et chacune pour une raison qui
+ * vaut d etre notee. Se fier au numero de la carte centree : pendant un lancer
+ * de doigt la position passe au-dela de la carte visee avant d y revenir, et
+ * chaque carte survolee declenchait son animation. Attendre un delai fixe :
+ * c est la demi-seconde de latence. Attendre un silence des evenements de
+ * defilement : Safari sur iOS ne les emet pas regulierement pendant l inertie,
+ * il les envoie par paquets separes de trous parfois longs, et un trou pendant
+ * que la position survole la carte suivante suffit a tout declencher au mauvais
+ * endroit.
  *
- * On attend donc que le defilement se soit tu. Une carte reellement atteinte
- * l est en une fraction de seconde, une carte traversee ne l est jamais. */
-const REPOS = 70;
-let auRepos = null;
+ * requestAnimationFrame, lui, tourne a chaque image quoi qu il arrive. Une
+ * position identique sur trois images consecutives, et calee sur une carte,
+ * c est une immobilite vraie : environ 50 ms, imperceptible, et impossible a
+ * obtenir en passant. */
+const IMAGES_STABLES = 3;
+let surveillance = null;
+let positionPrecedente = -1;
+let imagesStables = 0;
+let debutSurveillance = 0;
 
-function verifierRepos() {
+function surveillerRepos() {
+  cancelAnimationFrame(surveillance);
+  imagesStables = 0;
+  debutSurveillance = performance.now();
+  surveillance = requestAnimationFrame(boucleRepos);
+}
+
+function boucleRepos() {
   const H = flux.clientHeight || 1;
   const pos = flux.scrollTop / H;
-  const index = Math.min(Math.round(pos), cartes.length - 1);
-  if (Math.abs(pos - index) > 0.02) return;          // pas encore cale
 
-  if (destination !== null && index !== destination) return;
-  if (index === destination) { destination = null; clearTimeout(finDuSaut); }
-  jouerOuverture(index);
+  imagesStables = Math.abs(pos - positionPrecedente) < 0.0005 ? imagesStables + 1 : 0;
+  positionPrecedente = pos;
+
+  if (imagesStables >= IMAGES_STABLES) {
+    const index = Math.min(Math.round(pos), cartes.length - 1);
+    if (Math.abs(pos - index) <= 0.02) {
+      if (destination !== null && index !== destination) return;   // saut en cours
+      if (index === destination) { destination = null; clearTimeout(finDuSaut); }
+      jouerOuverture(index);
+      return;
+    }
+  }
+  // Filet de securite : on ne surveille pas indefiniment.
+  if (performance.now() - debutSurveillance < 4000) {
+    surveillance = requestAnimationFrame(boucleRepos);
+  }
 }
 
 flux.addEventListener("scroll", () => {
-  clearTimeout(auRepos);
-  auRepos = setTimeout(verifierRepos, REPOS);
+  surveillerRepos();
   if (enAttente) return;
   enAttente = true;
   requestAnimationFrame(() => { enAttente = false; peindre(); });
@@ -1199,6 +1427,14 @@ function observerClotures() {
 document.querySelectorAll("[data-ferme]").forEach((b) =>
   b.addEventListener("click", () => $(b.dataset.ferme).classList.remove("ouvert")));
 $("b-progression").addEventListener("click", () => { rendreProgression(); $("p-progression").classList.add("ouvert"); });
+$("progression-corps").addEventListener("click", (e) => {
+  const titre = e.target.dataset?.oter;
+  if (!titre) return;
+  etat.aLire = listeLecture().filter((o) => o.titre !== titre);
+  sauver();
+  rendreProgression();
+  peindreEntete(indexCourant());
+});
 $("b-reglages").addEventListener("click", () => { rendreReglages(); $("p-reglages").classList.add("ouvert"); });
 
 function anneau(valeur, libelle, couleur, pct) {
@@ -1239,6 +1475,19 @@ function rendreProgression() {
       <span class="val">${lues}</span></div>
     <div class="ligne"><span class="nom-mod">Dernier geste enregistré</span>
       <span class="val">${dernier}</span></div>
+    ${listeLecture().length ? `<div class="sous-titre">Ma liste de lecture</div>
+      <div class="liste-lire">${listeLecture().slice().reverse().map((o) => `
+        <div class="ligne">
+          <span class="nom-mod" style="flex-direction:column;align-items:flex-start;gap:0">
+            <span class="lire-titre">${echappe(o.titre)}</span>
+            <span class="lire-auteur">${echappe(o.auteur || "")}</span>
+            <span class="lire-liens">${o.gutenberg
+              ? `<a href="${o.gutenberg}" target="_blank" rel="noopener">lire en ligne</a>` : ""}${
+                o.source ? `<a href="${o.source}" target="_blank" rel="noopener">la fiche</a>` : ""}</span>
+          </span>
+          <button class="oter" type="button" data-oter="${echappe(o.titre)}"
+                  aria-label="Retirer">&times;</button>
+        </div>`).join("")}</div>` : ""}
     <div class="sous-titre">Modules actifs</div>
     ${actifs.map((m) => `<div class="ligne">
       <span class="nom-mod"><i class="puce" style="background:${couleurs(m.id)[0]}"></i>${echappe(m.nom)}</span>
@@ -1331,7 +1580,9 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
 
 (async () => {
   try {
-    paquet = await charger();
+    // Les deux en parallele : le paquet vient du reseau ou du cache, les
+    // polices du navigateur. Rien ne sert de les enchainer.
+    [paquet] = await Promise.all([charger(), policesPretes()]);
   } catch (erreur) {
     $("attente").textContent = "Contenu introuvable. Place contenu.json à côté de cette page.";
     return;
@@ -1348,5 +1599,14 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
   batirFlux();
   calculerTeintes();
   peindre();
+
+  // Filet : si une police arrive apres le delai de garde, on remesure.
+  document.fonts?.ready?.then(() => verifierDebordement(0));
+  // Une rotation change toute la geometrie : on redecoupe, sans perdre la place.
+  let rotation = null;
+  window.addEventListener("resize", () => {
+    clearTimeout(rotation);
+    rotation = setTimeout(() => { recalagesRestants = 2; reconstruire(); }, 250);
+  });
 })();
 </script>
