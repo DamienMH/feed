@@ -971,19 +971,55 @@ function ajusterVolets(rendre, passes = 4) {
 }
 
 /* Une carte de feed ne se decoupe pas en volets : c est une accroche, pas un
-   chapitre. Quand elle deborde sur un petit ecran, on lui retire un paragraphe
-   plutot que de la laisser defiler dans son coin. Le lien vers la source reste,
-   c est lui qui porte la suite. */
+ * chapitre. Quand elle deborde, elle doit rentrer, mais sans perdre ce qu on
+ * vient y lire.
+ *
+ * On retirait les paragraphes par le bas jusqu a ce que ca tienne. Seulement la
+ * legende, "Leroux, resume", est elle aussi un paragraphe, et le premier : sur
+ * un resume un peu long, les trois retraits emportaient tout le corps du texte
+ * et il ne restait que la legende, qui ne dit rien du livre. On protege donc le
+ * corps : on enleve les paragraphes en trop, jamais le premier, puis on
+ * raccourcit celui qui reste. Le lien vers la source porte la suite. */
 function degraisserFeed() {
-  for (const section of flux.children) {
-    if (section.dataset.type === "chapitre" || section.dataset.type === "cloture") continue;
-    for (let n = 0; n < 3; n++) {
-      if (section.scrollHeight <= section.clientHeight + 6) break;
-      const paragraphes = section.querySelectorAll("p");
-      if (paragraphes.length <= 1) break;
-      paragraphes[paragraphes.length - 1].remove();
-    }
+  for (const section of flux.children) degraisserCarte(section);
+}
+
+function degraisserCarte(section) {
+  if (!section) return;
+  if (section.dataset.type === "chapitre" || section.dataset.type === "cloture") return;
+  if (tient(section)) return;
+
+  const corps = [...section.querySelectorAll("p")].filter((p) => !p.hasAttribute("data-legende"));
+  while (corps.length > 1 && !tient(section)) corps.pop().remove();
+  if (corps.length && !tient(section)) rogner(section, corps[0]);
+}
+
+const tient = (section) => section.scrollHeight <= section.clientHeight + 6;
+
+/* Raccourcit un paragraphe jusqu a ce que la carte tienne. Par dichotomie sur
+ * le nombre de mots : retirer un mot a la fois demanderait des centaines de
+ * mesures de mise en page sur un resume de mille signes, et chaque mesure force
+ * un recalcul complet.
+ *
+ * On vise l ajustement exact, pas la tolerance de six pixels : la mise en page
+ * bouge encore de quelques pixels apres le degraissage, quand une police de
+ * substitution cede la place a la vraie, et une carte calee au pixel pres
+ * ressortait alors a sept pixels de trop. Ces six pixels sont la marge. */
+function rogner(section, p) {
+  const mots = p.textContent.split(/\s+/).filter(Boolean);
+  const cale = () => section.scrollHeight <= section.clientHeight;
+  const pose = (n) => {
+    p.textContent = mots.slice(0, n).join(" ").replace(/[\s,;:.…-]+$/, "") + " […]";
+    return cale();
+  };
+  let bas = Math.min(14, mots.length);
+  let haut = mots.length;
+  if (!pose(bas)) return;                   // meme court, ca deborde : on laisse
+  while (bas < haut - 1) {
+    const milieu = Math.floor((bas + haut) / 2);
+    if (pose(milieu)) bas = milieu; else haut = milieu;
   }
+  pose(bas);
 }
 
 /* ---------- rendu ---------- */
@@ -1065,7 +1101,7 @@ function elementCarte(v, precedente, suivante) {
   const visuel = v.media_type === "image";
   html += `<div class="kicker">${visuel ? "œuvre du jour" : "à lire"}</div>
     <h2>${echappe(v.titre)}</h2>
-    ${v.extrait ? `<p style="color:var(--ink-doux)">${echappe(v.extrait)}</p>` : ""}
+    ${v.extrait ? `<p data-legende style="color:var(--ink-doux)">${echappe(v.extrait)}</p>` : ""}
     ${texteCarte(v.contenu, v.extrait, v.titre).slice(0, 3).map((p) => `<p>${echappe(p)}</p>`).join("")}
     ${(v.attribution || v.url) ? `<div class="meta-bas">${echappe(v.attribution || "")}${
       v.url ? `<br><a href="${v.url}" target="_blank" rel="noopener">ouvrir la source</a>` : ""}</div>` : ""}`;
@@ -1322,9 +1358,15 @@ function reconstruire() {
 }
 
 function verifierDebordement(index) {
-  if (recalagesRestants <= 0) return;
   const section = flux.children[index];
-  if (!section || section.scrollHeight <= section.clientHeight + 6) return;
+  if (!section || tient(section)) return;
+
+  // Une carte de feed se regle toute seule, en place : reconstruire tout le
+  // flux pour elle changerait le decoupage des chapitres sans raison, et le
+  // budget de recalages est precieux.
+  if (section.dataset.type !== "chapitre") { degraisserCarte(section); return; }
+
+  if (recalagesRestants <= 0) return;
   recalagesRestants -= 1;
   signesParPixel = Math.max(1.0, signesParPixel - 0.3);
   reconstruire();
@@ -1471,6 +1513,12 @@ function peindre() {
   const racine = document.documentElement;
   racine.style.setProperty("--ground", enTsl(melange(teintes[i].fond, teintes[j].fond, t)));
   racine.style.setProperty("--accent", enTsl(melange(teintes[i].accent, teintes[j].accent, t)));
+  // Le fond ne change qu une fois la carte reellement arrivee. Le rattacher au
+  // basculement de Math.round le faisait changer a mi-geste : l ecran de fin de
+  // chapitre se retrouvait alors avec l image de la carte suivante.
+  const arrive = Math.min(Math.round(pos), cartes.length - 1);
+  if (Math.abs(pos - arrive) < 0.22) poserFond(cartes[arrive]);
+
   const centre = Math.round(pos);
   if (centre !== dernierCentre) {
     const precedent = dernierCentre;
@@ -1478,7 +1526,6 @@ function peindre() {
     if (centre > precedent) quitter(precedent);
     const index = Math.min(centre, cartes.length - 1);
     peindreEntete(index);
-    poserFond(cartes[index]);
     atteindre(index);
     precharger(index + 1);
     verifierDebordement(index);
@@ -1764,15 +1811,21 @@ $("ouverture").addEventListener("click", fermerOuverture);
  * position identique sur trois images consecutives, et calee sur une carte,
  * c est une immobilite vraie : environ 50 ms, imperceptible, et impossible a
  * obtenir en passant. */
-const IMAGES_STABLES = 3;
+/* Sur iOS, une position "immobile" ne l est jamais tout a fait : le calage par
+   inertie laisse une derive de quelques dixiemes de pixel pendant plusieurs
+   images. Exiger une egalite stricte revenait a ne jamais conclure, donc a ne
+   plus jouer aucune ouverture. On mesure donc le deplacement total sur une
+   fenetre de huit images : un doigt qui lance fait bouger de dizaines de
+   pixels par image, une carte posee de moins d un pixel en tout. */
+const FENETRE = 8;
+const DERIVE_TOLEREE = 0.012;      // en hauteurs de carte, soit ~9 px
 let surveillance = null;
-let positionPrecedente = -1;
-let imagesStables = 0;
+let positions = [];
 let debutSurveillance = 0;
 
 function surveillerRepos() {
   cancelAnimationFrame(surveillance);
-  imagesStables = 0;
+  positions = [];
   debutSurveillance = performance.now();
   surveillance = requestAnimationFrame(boucleRepos);
 }
@@ -1780,20 +1833,21 @@ function surveillerRepos() {
 function boucleRepos() {
   const H = flux.clientHeight || 1;
   const pos = flux.scrollTop / H;
+  positions.push(pos);
+  if (positions.length > FENETRE) positions.shift();
 
-  imagesStables = Math.abs(pos - positionPrecedente) < 0.0005 ? imagesStables + 1 : 0;
-  positionPrecedente = pos;
+  const pose = positions.length >= FENETRE
+    && Math.max(...positions) - Math.min(...positions) < DERIVE_TOLEREE;
 
-  if (imagesStables >= IMAGES_STABLES) {
+  if (pose) {
     const index = Math.min(Math.round(pos), cartes.length - 1);
-    if (Math.abs(pos - index) <= 0.02) {
-      if (destination !== null && index !== destination) return;   // saut en cours
+    if (Math.abs(pos - index) <= 0.05) {
+      if (destination !== null && index !== destination) return;
       if (index === destination) { destination = null; clearTimeout(finDuSaut); }
       jouerOuverture(index);
       return;
     }
   }
-  // Filet de securite : on ne surveille pas indefiniment.
   if (performance.now() - debutSurveillance < 4000) {
     surveillance = requestAnimationFrame(boucleRepos);
   }
