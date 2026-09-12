@@ -898,33 +898,17 @@ function jouerOuverture(index) {
     ${v.image_credit ? `<div class="ouv-credit">${echappe(v.image_credit)}</div>` : ""}`;
   o.classList.add("joue");
   o._t = setTimeout(fermerOuverture, DUREE_OUVERTURE);
-  surveillerFausseOuverture(cle, flux.scrollTop);
 }
 
-/* Deuxieme garde-fou, celui qui ne suppose rien du navigateur.
- *
- * Meme immobile trois images d affilee, une position peut n etre qu une halte
- * dans un mouvement qui reprend. Si le defilement repart dans la demi-seconde,
- * c est que l ouverture s est declenchee sur une carte de passage : on l efface
- * et on lui rend son tour, pour qu elle se rejoue quand on y arrivera vraiment.
- * Aucune prediction ici, seulement un constat apres coup. */
-function surveillerFausseOuverture(cle, depart) {
-  const o = $("ouverture");
-  const limite = performance.now() + 500;
-  const verifier = () => {
-    if (o.dataset.cle !== cle || !o.classList.contains("joue")) return;
-    if (Math.abs(flux.scrollTop - depart) > flux.clientHeight * 0.05) {
-      ouvertes.delete(cle);
-      clearTimeout(o._t);
-      o.classList.remove("joue", "sortie");
-      o.innerHTML = "";
-      o.dataset.cle = "";
-      return;
-    }
-    if (performance.now() < limite) requestAnimationFrame(verifier);
-  };
-  requestAnimationFrame(verifier);
-}
+/* Il y avait ici un second garde-fou qui annulait l ouverture si le defilement
+ * bougeait encore dans la demi-seconde. Il partait d une detection qui pouvait
+ * se declencher trop tot, et sur iOS c est lui qui tuait les animations :
+ * le calage magnetique deplace encore la page de plusieurs dizaines de pixels
+ * apres que la derive est devenue indetectable, ce qu il prenait pour un geste
+ * qui reprend. Depuis que l arrivee est constatee par l observateur, une
+ * ouverture ne demarre plus avant que la carte occupe l ecran, et il n y a plus
+ * rien a annuler. Une carte traversee malgre tout recupere son tour dans
+ * jouerOuverture, au moment ou la suivante se presente. */
 
 /* Un debordement constate a l usage vaut mieux qu une mesure faite une fois.
  *
@@ -1037,6 +1021,10 @@ function batirFlux(options = {}) {
 
   batirSegments();
   observerClotures();
+  // L observateur suit les cartes qui viennent d etre creees : sans ce rappel,
+  // une reconstruction laisserait l ancien observateur sur des elements qui ne
+  // sont plus dans la page, et plus aucune arrivee ne serait constatee.
+  observerCartes();
   if (!options.conserverFile) {
     peindreEntete(0);
     poserFond(cartes[0]);
@@ -1117,11 +1105,10 @@ function peindre() {
   const racine = document.documentElement;
   racine.style.setProperty("--ground", enTsl(melange(teintes[i].fond, teintes[j].fond, t)));
   racine.style.setProperty("--accent", enTsl(melange(teintes[i].accent, teintes[j].accent, t)));
-  // Le fond ne change qu une fois la carte reellement arrivee. Le rattacher au
-  // basculement de Math.round le faisait changer a mi-geste : l ecran de fin de
-  // chapitre se retrouvait alors avec l image de la carte suivante.
-  const arrive = Math.min(Math.round(pos), cartes.length - 1);
-  if (Math.abs(pos - arrive) < 0.22) poserFond(cartes[arrive]);
+  // Le fond n est plus pose ici. Tant qu il suivait la position du defilement,
+  // il basculait avant la fin du geste et l ecran de fin de chapitre portait
+  // l image de la carte suivante. C est desormais confirmerArrivee, et elle
+  // seule, qui le change, une fois la carte vraiment a l ecran.
 
   const centre = Math.round(pos);
   if (centre !== dernierCentre) {
@@ -1226,24 +1213,14 @@ const estLue = (v) => v && v.id && etat.evenements.some((e) => e.carte === v.id 
 /* ---------- interactions ---------- */
 
 function indexCourant() { return Math.round(flux.scrollTop / (flux.clientHeight || 1)); }
-/* Un saut programme traverse les cartes intermediaires et peut deborder d un
-   cran avant de se caler. On retient donc ou l on va : tant que le defilement
-   n y est pas, les cartes survolees ne declenchent pas leur ouverture. Sans ce
-   garde-fou, terminer un chapitre montre l animation de la carte d apres avant
-   l ecran de fin de chapitre. */
-let destination = null;
-let finDuSaut = null;
 
+/* Un saut programme n a plus besoin de retenir sa destination pour empecher les
+   cartes traversees de jouer leur ouverture : l observateur ne conclut a une
+   arrivee qu apres 180 ms sans franchissement, et une carte survolee pendant un
+   defilement anime n a jamais ce calme. */
 function allerA(i) {
-  destination = Math.min(i, cartes.length - 1);
-  clearTimeout(finDuSaut);
-  finDuSaut = setTimeout(() => { destination = null; }, 1200);
-  flux.scrollTo({ top: destination * flux.clientHeight, behavior: "smooth" });
-}
-
-// Un geste de la main reprend la main : le saut n a plus de destination.
-for (const geste of ["touchstart", "wheel", "pointerdown"]) {
-  flux.addEventListener(geste, () => { destination = null; }, { passive: true });
+  const cible = Math.min(i, cartes.length - 1);
+  flux.scrollTo({ top: cible * flux.clientHeight, behavior: "smooth" });
 }
 
 function finUnite(depart) {
@@ -1404,66 +1381,84 @@ flux.addEventListener("click", (e) => {
 
 $("ouverture").addEventListener("click", fermerOuverture);
 
-/* L ouverture attend l immobilite reelle, mesuree image par image.
+/* L arrivee sur une carte, demandee au navigateur plutot que devinee.
  *
- * Trois approches ont echoue avant celle-ci, et chacune pour une raison qui
- * vaut d etre notee. Se fier au numero de la carte centree : pendant un lancer
- * de doigt la position passe au-dela de la carte visee avant d y revenir, et
- * chaque carte survolee declenchait son animation. Attendre un delai fixe :
- * c est la demi-seconde de latence. Attendre un silence des evenements de
- * defilement : Safari sur iOS ne les emet pas regulierement pendant l inertie,
- * il les envoie par paquets separes de trous parfois longs, et un trou pendant
- * que la position survole la carte suivante suffit a tout declencher au mauvais
- * endroit.
+ * Quatre approches par la position du defilement ont echoue avant celle-ci, et
+ * toutes pour la meme raison de fond : sur Safari iOS, scrollTop pendant un
+ * lancer de doigt ne dit ni ou l on est ni ou l on va. Se fier au numero de la
+ * carte centree declenchait l animation de chaque carte survolee. Attendre un
+ * delai fixe coutait une demi-seconde de latence. Attendre un silence des
+ * evenements de defilement supposait qu ils arrivent regulierement, ce que iOS
+ * ne fait pas, il les emet par paquets separes de trous. Et mesurer une
+ * immobilite image par image butait sur le calage magnetique, qui continue de
+ * deplacer la page apres que la derive est devenue indetectable, si bien que
+ * l ouverture demarrait puis se faisait annuler par son propre garde-fou.
  *
- * requestAnimationFrame, lui, tourne a chaque image quoi qu il arrive. Une
- * position identique sur trois images consecutives, et calee sur une carte,
- * c est une immobilite vraie : environ 50 ms, imperceptible, et impossible a
- * obtenir en passant. */
-/* Sur iOS, une position "immobile" ne l est jamais tout a fait : le calage par
-   inertie laisse une derive de quelques dixiemes de pixel pendant plusieurs
-   images. Exiger une egalite stricte revenait a ne jamais conclure, donc a ne
-   plus jouer aucune ouverture. On mesure donc le deplacement total sur une
-   fenetre de huit images : un doigt qui lance fait bouger de dizaines de
-   pixels par image, une carte posee de moins d un pixel en tout. */
-const FENETRE = 8;
-const DERIVE_TOLEREE = 0.012;      // en hauteurs de carte, soit ~9 px
-let surveillance = null;
-let positions = [];
-let debutSurveillance = 0;
+ * On ne mesure donc plus rien. Un IntersectionObserver dit quelle carte occupe
+ * l ecran, c est sa definition meme, et il est calcule par le moteur de rendu
+ * au bon moment sans dependre du rythme des evenements. Le fond et l ouverture
+ * suivent cette seule source, ce qui garantit aussi qu ils ne peuvent plus se
+ * contredire : l ecran de fin de chapitre ne peut plus porter l image de la
+ * carte d apres, puisque rien ne pose le fond avant d etre arrive. */
 
-function surveillerRepos() {
-  cancelAnimationFrame(surveillance);
-  positions = [];
-  debutSurveillance = performance.now();
-  surveillance = requestAnimationFrame(boucleRepos);
+const PART_VISIBLE = 0.9;     // part de la carte a l ecran pour dire qu on y est
+const REPOS = 180;            // ms sans changement avant de conclure a l arrivee
+
+let observateur = null;
+let arrivee = -1;             // carte sur laquelle on est pose
+let minuterieArrivee = null;
+
+function observerCartes() {
+  clearTimeout(minuterieArrivee);
+  arrivee = -1;
+  if (observateur) observateur.disconnect();
+  if (!("IntersectionObserver" in window)) return;
+
+  observateur = new IntersectionObserver((entrees) => {
+    // On ne retient que la carte la plus visible du lot : pendant un geste, le
+    // navigateur signale a la fois celle qu on quitte et celle qu on gagne.
+    let meilleure = null;
+    for (const e of entrees) {
+      if (!meilleure || e.intersectionRatio > meilleure.intersectionRatio) meilleure = e;
+    }
+    if (!meilleure || meilleure.intersectionRatio < PART_VISIBLE) return;
+
+    const index = [...flux.children].indexOf(meilleure.target);
+    if (index < 0) return;
+    // Chaque franchissement repousse l echeance : une carte traversee dans un
+    // lancer n a jamais ses 180 ms de calme, donc elle ne declenche rien.
+    clearTimeout(minuterieArrivee);
+    minuterieArrivee = setTimeout(() => confirmerArrivee(index), REPOS);
+  }, { root: flux, threshold: [0, 0.5, 0.75, PART_VISIBLE, 0.99] });
+
+  for (const section of flux.children) observateur.observe(section);
 }
 
-function boucleRepos() {
-  const H = flux.clientHeight || 1;
-  const pos = flux.scrollTop / H;
-  positions.push(pos);
-  if (positions.length > FENETRE) positions.shift();
+function confirmerArrivee(index) {
+  const v = cartes[index];
+  if (!v || index === arrivee) return;
+  arrivee = index;
+  poserFond(v);
+  jouerOuverture(index);
+}
 
-  const pose = positions.length >= FENETRE
-    && Math.max(...positions) - Math.min(...positions) < DERIVE_TOLEREE;
-
-  if (pose) {
+/* Filet de securite, pour le cas ou l observateur resterait muet : quelques
+   navigateurs ne recalculent pas l intersection quand le defilement se termine
+   exactement sur un seuil. Un defilement qui s arrete plus de 250 ms confirme
+   donc l arrivee lui-meme. Il ne precede jamais l observateur, il le rattrape. */
+let finDuDefilement = null;
+function guetterFinDuDefilement() {
+  clearTimeout(finDuDefilement);
+  finDuDefilement = setTimeout(() => {
+    const H = flux.clientHeight || 1;
+    const pos = flux.scrollTop / H;
     const index = Math.min(Math.round(pos), cartes.length - 1);
-    if (Math.abs(pos - index) <= 0.05) {
-      if (destination !== null && index !== destination) return;
-      if (index === destination) { destination = null; clearTimeout(finDuSaut); }
-      jouerOuverture(index);
-      return;
-    }
-  }
-  if (performance.now() - debutSurveillance < 4000) {
-    surveillance = requestAnimationFrame(boucleRepos);
-  }
+    if (Math.abs(pos - index) < 0.08) confirmerArrivee(index);
+  }, 250);
 }
 
 flux.addEventListener("scroll", () => {
-  surveillerRepos();
+  guetterFinDuDefilement();
   if (enAttente) return;
   enAttente = true;
   requestAnimationFrame(() => { enAttente = false; peindre(); });
