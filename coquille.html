@@ -57,7 +57,12 @@
   }
   /* image-rendering: pixelated et une taille exactement egale a la grille :
      tout autre facteur rendrait les bords irreguliers. */
-  .perso { width: 64px; height: 96px; image-rendering: pixelated; flex: none; }
+  .perso { width: 64px; height: 96px; image-rendering: pixelated; flex: none;
+           transition: opacity .28s ease; }
+  /* Sur la carte de titre, le personnage est deja au centre, en grand : le
+     repeter dans la colonne fait doublon. On l efface sans reprendre sa place,
+     pour que la jauge ne saute pas d un ecran a l autre. */
+  .perso.efface { opacity: 0; }
   .niv {
     font-family: "JetBrains Mono", monospace; font-size: 15px; font-weight: 700;
     color: var(--accent); line-height: 1; font-variant-numeric: tabular-nums;
@@ -1441,6 +1446,7 @@ function peindreFlanc(index) {
     perso.onload = () => { perso.style.visibility = "visible"; };
     perso.src = `images/perso/${v.module}.png`;
   }
+  perso.classList.toggle("efface", !!v._titre);
   peindreJauge(v.module);
   $("total").innerHTML = `<b>${M.niveauGlobal(niveauxCourants)}</b>total`;
 
