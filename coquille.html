@@ -755,7 +755,7 @@ function elementCarte(v, precedente, suivante) {
   if ((!precedente || precedente.module !== v.module) && v._type !== "cloture") {
     html += `<div class="bandeau"><i class="bandeau-filet" style="--c:${accent}"></i>
       <span class="bandeau-nom">${echappe(nomModule)}</span>
-      <span class="bandeau-type">${v.type === "chapitre" ? "parcours" : "feed"}</span></div>`;
+      <span class="bandeau-type">${(paquet.modules.find((m) => m.id === v.module)?.format) === "feed" ? "feed" : "parcours"}</span></div>`;
   }
 
   if (v._type === "cloture") {
@@ -1127,8 +1127,16 @@ function batirFlux(options = {}) {
   if (!options.conserverFile || !file.length) {
     file = M.construireFile(paquet, etat, { taille: objectif, mode });
   }
+  // Seuls les rappels DUS ouvrent le flux. Les rappels frais, eux, naissent
+  // apres la cloture de leur chapitre dans la boucle plus bas, et une
+  // reconstruction les recree a leur place.
+  //
+  // Sans le filtre sur _frais, ils etaient tous ramasses ici et republies en
+  // tete : au premier recalage, une rotation ou un changement de taille de
+  // texte, l application posait une question sur un chapitre situe plus loin
+  // dans la file, et donc pas encore lu.
   const dus = options.conserverFile
-    ? cartes.filter((v) => v._type === "rappel")
+    ? cartes.filter((v) => v._type === "rappel" && !v._frais)
     : (mode === "objectif" ? M.rappelsDus(etat, paquet) : []);
 
   // Le decoupage et le rendu sont refaits tels quels si une mesure montre
