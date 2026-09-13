@@ -38,11 +38,20 @@
      niveau du theme en cours. Le format vertical n est pas un caprice, c est
      ce qui permet d y loger une silhouette en pied et une jauge de treize
      crans sans rogner sur la largeur du texte plus que necessaire. */
-  .corps { flex: 1; display: flex; min-height: 0; position: relative; z-index: 1; }
+  /* La marge haute de l ecran est portee ici, et non par chaque carte.
+     L ancienne barre du haut la reservait ; en disparaissant, elle a laisse le
+     flux commencer sous l horloge et l encoche, et la ligne "suite du chapitre"
+     passait dessous. La poser sur le conteneur plutot que sur la carte a un
+     second effet, voulu : flux.clientHeight diminue d autant, donc le budget de
+     decoupage des volets s ajuste tout seul au lieu de deborder. */
+  .corps {
+    flex: 1; display: flex; min-height: 0; position: relative; z-index: 1;
+    padding-top: env(safe-area-inset-top);
+  }
   .flanc {
     width: 68px; flex: none; z-index: 20;
     border-right: 1px solid var(--rule);
-    padding: calc(8px + env(safe-area-inset-top)) 0 calc(10px + env(safe-area-inset-bottom));
+    padding: 8px 0 calc(10px + env(safe-area-inset-bottom));
     display: flex; flex-direction: column; align-items: center; gap: 8px;
     background: linear-gradient(90deg, var(--ground) 70%, transparent);
   }
@@ -125,6 +134,11 @@
     overflow-y: auto; scrollbar-width: none;
   }
   .carte::-webkit-scrollbar { display: none; }
+  /* Voir le filet de fin d ajusterVolets : un volet isole qui deborde encore. */
+  .carte.serre p { line-height: 1.34; margin-bottom: 11px; }
+  .carte.serre .accroche { font-size: 19px; line-height: 1.2; margin-bottom: 13px; }
+  .carte.serre .suite-de { margin-bottom: 11px; }
+  .carte.serre .volets { margin-bottom: 12px; }
 
   .bandeau {
     display: flex; align-items: center; gap: 11px; margin: 0 0 24px;
@@ -600,6 +614,13 @@ async function charger() {
 
 let signesParPixel = 2.0;      // ajuste apres mesure, voir ajusterVolets
 
+/* Jusqu ou le decoupage peut se resserrer avant d abandonner.
+   Le plancher etait a 1.0, ce qui suffisait tant que le flux occupait tout
+   l ecran. Depuis que la marge haute de l iPhone est reservee, un petit ecran
+   perd une soixantaine de pixels de plus et un volet sur cent finissait par
+   deborder faute de pouvoir descendre plus bas. */
+const PLANCHER_SIGNES = 0.8;
+
 /* Un paragraphe plus long que la place d un volet ne peut pas tenir, quel que
    soit le budget : on le coupe entre deux phrases. Une coupure de paragraphe se
    lit sans heurt, un texte qu il faut faire defiler dans la carte, non. */
@@ -694,15 +715,28 @@ function volets(carte) {
    depend de la police, de la largeur, des cesures. On mesure donc apres coup,
    et on resserre tant qu un volet deborde. Trois passes au maximum, sur des
    elements deja en place, donc invisible a l oeil. */
-function ajusterVolets(rendre, passes = 5) {
+function ajusterVolets(rendre, passes = 7) {
   for (let n = 0; n < passes; n++) {
     const deborde = [...flux.children].some(
       (s) => s.dataset.type === "chapitre" && !s.classList.contains("est-titre")
              && s.scrollHeight > s.clientHeight + 6
     );
-    if (!deborde || signesParPixel <= 1.0) break;
-    signesParPixel = Math.max(1.0, signesParPixel - 0.3);
+    if (!deborde || signesParPixel <= PLANCHER_SIGNES) break;
+    signesParPixel = Math.max(PLANCHER_SIGNES, signesParPixel - 0.2);
     rendre();
+  }
+
+  // Filet de dernier recours, carte par carte.
+  //
+  // Le budget de decoupage est global : il vaut pour tout le flux, et sur un
+  // ecran tres court il peut rester un volet, un seul, qui deborde de quelques
+  // pixels apres toutes les passes. Descendre le budget general pour lui
+  // couperait tous les autres beaucoup trop fin. On resserre donc la
+  // typographie de ce volet-la, de deux dixiemes d interligne, ce qui se voit a
+  // peine et suffit toujours.
+  for (const s of flux.children) {
+    if (s.dataset.type !== "chapitre" || s.classList.contains("est-titre")) continue;
+    s.classList.toggle("serre", s.scrollHeight > s.clientHeight + 6);
   }
   degraisserFeed();
 }
@@ -1138,7 +1172,7 @@ function verifierDebordement(index) {
 
   if (recalagesRestants <= 0) return;
   recalagesRestants -= 1;
-  signesParPixel = Math.max(1.0, signesParPixel - 0.3);
+  signesParPixel = Math.max(PLANCHER_SIGNES, signesParPixel - 0.2);
   reconstruire();
 }
 
