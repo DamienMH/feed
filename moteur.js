@@ -13,7 +13,17 @@ export const POIDS = {
   appetence: 0.5,
   monotonie: 0.9,
   variete: 0.9,
+  report: 1.4,
 };
+
+/* Combien de temps un "plus tard" pese.
+ *
+ * Deux durees, parce qu un report dit deux choses a la fois. Sur la carte :
+ * "pas celle-la", et deux jours suffisent a ce qu elle ne ressemble plus a un
+ * rappel a l ordre. Sur le module : "pas ce sujet maintenant", et la un jour
+ * suffit, parce que repousser un chapitre n est pas renoncer au parcours. */
+export const REPORT_CARTE = 2;
+export const REPORT_MODULE = 1;
 
 /* Un grain de hasard, stable dans la journee.
  *
@@ -63,6 +73,7 @@ export function etatVide() {
     reponses: [],        // { rappel, date, reussi }
     sessions: {},        // AAAA-MM-JJ -> { objectif, vues, atteint, bonusSec }
     activation: {},      // module -> date d activation
+    reports: {},         // module -> date du dernier "plus tard"
     modulesActifs: null, // null = ceux du paquet
     modulesVus: null,    // modules connus quand la liste ci-dessus a ete ecrite
   };
@@ -130,7 +141,10 @@ export function appetences(etat) {
   const compte = {};
   for (const e of etat.evenements) {
     if (e.date < limite) continue;
-    if (e.action !== "terminee" && e.action !== "passee") continue;
+    // Un "plus tard" repete sur un meme module finit par dire la meme chose
+    // qu un rejet : le premier est une envie de changer, le troisieme est un
+    // gout. Il compte donc ici, ou trente jours de recul lissent l accident.
+    if (!["terminee", "passee", "reportee"].includes(e.action)) continue;
     compte[e.module] = compte[e.module] || { ok: 0, ko: 0 };
     compte[e.module][e.action === "terminee" ? "ok" : "ko"] += 1;
   }
@@ -184,6 +198,12 @@ export function candidates(paquet, etat) {
       .filter((e) => ["vue", "terminee", "passee"].includes(e.action))
       .map((e) => e.carte)
   );
+  // "Plus tard" veut dire plus tard, pas jamais : la carte sort de la file
+  // deux jours, puis revient a sa place dans le classement.
+  const frais = Date.now() - REPORT_CARTE * JOUR;
+  for (const e of etat.evenements) {
+    if (e.action === "reportee" && e.date >= frais) vues.add(e.carte);
+  }
   const actifs = new Set(modulesActifs(paquet, etat).map((m) => m.id));
 
   // Un chapitre attend que le precedent du meme parcours soit termine. On
@@ -241,12 +261,20 @@ function score(carte, ctx) {
     ? ctx.recents.filter((m) => m === carte.module).length / ctx.recents.length
     : 0;
 
+  // Le module vient d etre repousse : il recule dans le classement sans en
+  // sortir, et la penalite s efface d elle-meme en un jour.
+  const repousse = ctx.reports[carte.module] || 0;
+  const report = repousse
+    ? Math.max(0, 1 - (Date.now() - repousse) / (REPORT_MODULE * JOUR))
+    : 0;
+
   return POIDS.dette * dette
     + POIDS.continuite * continuite
     + POIDS.contexte * contexte
     + POIDS.appetence * appetence
     + POIDS.variete * grain(carte.module, ctx.jour)
-    - POIDS.monotonie * monotonie;
+    - POIDS.monotonie * monotonie
+    - POIDS.report * report;
 }
 
 export function construireFile(paquet, etat, options = {}) {
@@ -259,6 +287,7 @@ export function construireFile(paquet, etat, options = {}) {
     appetences: appetences(etat),
     continuites: continuites(paquet, etat),
     recents: derniersModules(etat),
+    reports: etat.reports || {},
     moment,
     jour: options.jour || new Date().toISOString().slice(0, 10),
   };

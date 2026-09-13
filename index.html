@@ -351,6 +351,7 @@
   .bas button { border: none; background: none; cursor: pointer; font-family: "Karla", sans-serif; font-size: 14px; color: var(--ink-doux); padding: 12px 4px; }
   .act-lu { flex: 1; background: var(--surface-haute) !important; border: 1px solid var(--rule) !important; border-radius: 999px; color: var(--ink) !important; font-weight: 700 !important; }
   .act-icone { width: 46px; height: 46px; border-radius: 50%; border: 1px solid var(--rule) !important; display: grid; place-items: center; font-size: 17px !important; }
+  .act-tard { flex: none; border: 1px solid var(--rule) !important; border-radius: 999px; padding: 12px 13px !important; font-size: 13px !important; white-space: nowrap; }
   .act-icone.actif { color: #d98e8e !important; border-color: #d98e8e !important; }
   .act-lire.actif { color: #8fb996 !important; border-color: #8fb996 !important; }
 
@@ -440,6 +441,7 @@
 
   <div class="bas" id="bas" style="display:none">
     <button type="button" class="act-lu" id="b-lu">J'ai lu</button>
+    <button type="button" class="act-tard" id="b-tard">Plus tard</button>
     <button type="button" class="act-icone act-lire" id="b-lire"
             aria-label="Ajouter à ma liste de lecture" style="display:none">&#128278;</button>
     <button type="button" class="act-icone" id="b-aime" aria-label="J'aime">&#9829;</button>
@@ -475,7 +477,17 @@ const POIDS = {
   appetence: 0.5,
   monotonie: 0.9,
   variete: 0.9,
+  report: 1.4,
 };
+
+/* Combien de temps un "plus tard" pese.
+ *
+ * Deux durees, parce qu un report dit deux choses a la fois. Sur la carte :
+ * "pas celle-la", et deux jours suffisent a ce qu elle ne ressemble plus a un
+ * rappel a l ordre. Sur le module : "pas ce sujet maintenant", et la un jour
+ * suffit, parce que repousser un chapitre n est pas renoncer au parcours. */
+const REPORT_CARTE = 2;
+const REPORT_MODULE = 1;
 
 /* Un grain de hasard, stable dans la journee.
  *
@@ -525,6 +537,7 @@ function etatVide() {
     reponses: [],        // { rappel, date, reussi }
     sessions: {},        // AAAA-MM-JJ -> { objectif, vues, atteint, bonusSec }
     activation: {},      // module -> date d activation
+    reports: {},         // module -> date du dernier "plus tard"
     modulesActifs: null, // null = ceux du paquet
     modulesVus: null,    // modules connus quand la liste ci-dessus a ete ecrite
   };
@@ -592,7 +605,10 @@ function appetences(etat) {
   const compte = {};
   for (const e of etat.evenements) {
     if (e.date < limite) continue;
-    if (e.action !== "terminee" && e.action !== "passee") continue;
+    // Un "plus tard" repete sur un meme module finit par dire la meme chose
+    // qu un rejet : le premier est une envie de changer, le troisieme est un
+    // gout. Il compte donc ici, ou trente jours de recul lissent l accident.
+    if (!["terminee", "passee", "reportee"].includes(e.action)) continue;
     compte[e.module] = compte[e.module] || { ok: 0, ko: 0 };
     compte[e.module][e.action === "terminee" ? "ok" : "ko"] += 1;
   }
@@ -646,6 +662,12 @@ function candidates(paquet, etat) {
       .filter((e) => ["vue", "terminee", "passee"].includes(e.action))
       .map((e) => e.carte)
   );
+  // "Plus tard" veut dire plus tard, pas jamais : la carte sort de la file
+  // deux jours, puis revient a sa place dans le classement.
+  const frais = Date.now() - REPORT_CARTE * JOUR;
+  for (const e of etat.evenements) {
+    if (e.action === "reportee" && e.date >= frais) vues.add(e.carte);
+  }
   const actifs = new Set(modulesActifs(paquet, etat).map((m) => m.id));
 
   // Un chapitre attend que le precedent du meme parcours soit termine. On
@@ -703,12 +725,20 @@ function score(carte, ctx) {
     ? ctx.recents.filter((m) => m === carte.module).length / ctx.recents.length
     : 0;
 
+  // Le module vient d etre repousse : il recule dans le classement sans en
+  // sortir, et la penalite s efface d elle-meme en un jour.
+  const repousse = ctx.reports[carte.module] || 0;
+  const report = repousse
+    ? Math.max(0, 1 - (Date.now() - repousse) / (REPORT_MODULE * JOUR))
+    : 0;
+
   return POIDS.dette * dette
     + POIDS.continuite * continuite
     + POIDS.contexte * contexte
     + POIDS.appetence * appetence
     + POIDS.variete * grain(carte.module, ctx.jour)
-    - POIDS.monotonie * monotonie;
+    - POIDS.monotonie * monotonie
+    - POIDS.report * report;
 }
 
 function construireFile(paquet, etat, options = {}) {
@@ -721,6 +751,7 @@ function construireFile(paquet, etat, options = {}) {
     appetences: appetences(etat),
     continuites: continuites(paquet, etat),
     recents: derniersModules(etat),
+    reports: etat.reports || {},
     moment,
     jour: options.jour || new Date().toISOString().slice(0, 10),
   };
@@ -982,6 +1013,8 @@ function sessionDuJour(etat, objectif) {
   return {
     MOMENTS,
     POIDS,
+    REPORT_CARTE,
+    REPORT_MODULE,
     appetences,
     candidates,
     chargerEtat,
@@ -1719,7 +1752,7 @@ function peindre() {
 /* Une carte laissee derriere soi sans un geste est un desinteret discret : on
    l enregistre, sans jamais demander a Damien de cliquer pour dire qu il
    n aime pas. Les chapitres en sont exclus, on les traverse volet par volet. */
-function dejaNote(id, actions = ["vue", "terminee", "passee", "aimee"]) {
+function dejaNote(id, actions = ["vue", "terminee", "passee", "aimee", "reportee"]) {
   return etat.evenements.some((e) => e.carte === id && actions.includes(e.action));
 }
 
@@ -1927,6 +1960,101 @@ $("b-aime").addEventListener("click", () => {
   annoncer("aimée · plus de ce sujet");
   setTimeout(avancer, 260);
 });
+
+/* La fin de l unite en cours, rappels frais compris.
+   finUnite s arrete a l ecran de cloture, et les cartes de rappel qui le
+   suivent appartiennent encore au chapitre : les laisser derriere ferait
+   interroger sur un texte qu on vient justement de repousser. */
+function finUniteComplete(depart) {
+  let i = finUnite(depart);
+  while (i + 1 < cartes.length && cartes[i + 1]._type === "rappel"
+         && cartes[i + 1]._frais && cartes[i + 1].carte?.id === cartes[depart].id) i++;
+  return i;
+}
+
+/* "Plus tard" : passer la carte, et changer de sujet.
+ *
+ * Le moteur repartit les themes sur la file entiere. C est juste sur une
+ * journee et faux dans la minute : on ne lit qu une poignee de cartes par
+ * session, et si les deux premieres viennent du meme parcours, c est ce
+ * parcours-la qu on a l impression de subir. Aucun reglage de score ne repare
+ * ca, parce que la lassitude ne se devine pas de l exterieur. Un bouton, si :
+ * il dit ou en est la personne, maintenant.
+ *
+ * Trois effets, du plus immediat au plus durable. A l ecran, le reste de
+ * l unite en cours quitte le flux et l unite suivante d un autre module vient
+ * se placer juste apres la carte affichee, pour que le geste reste un seul pas
+ * vers l avant. Dans le journal, l action "reportee" : ni "vue" ni "passee", la
+ * carte reviendra donc, mais pas avant deux jours. Et le module est note comme
+ * repousse, ce qui le penalise dans les files construites dans les
+ * vingt-quatre heures. */
+function reporter() {
+  const i = indexCourant();
+  const v = cartes[i];
+  if (!v || !v.id || v._type === "rappel") return;
+
+  const carte = paquet.cartes.find((c) => c.id === v.id);
+  if (carte && !dejaNote(v.id)) {
+    M.journaliser(etat, carte, "reportee", mode);
+    etat.reports = etat.reports || {};
+    etat.reports[carte.module] = Date.now();
+    sauver();
+  }
+
+  const fin = finUniteComplete(i);
+  let cible = -1;
+  for (let j = fin + 1; j < cartes.length; j++) {
+    if (cartes[j]._ouvre && cartes[j].module !== v.module) { cible = j; break; }
+  }
+
+  // Plus rien d un autre sujet dans ce qui reste : on refait la file entiere.
+  // Le module vient d etre penalise, elle ne s ouvrira donc pas sur lui.
+  if (cible < 0) {
+    file = [];
+    batirFlux();
+    calculerTeintes();
+    flux.scrollTo({ top: 0 });
+    peindre();
+    annoncer("plus tard · on change de sujet");
+    return;
+  }
+
+  const finCible = finUniteComplete(cible);
+  const enfants = [...flux.children];
+  const ancre = enfants[i];
+  for (const noeud of enfants.slice(i + 1, fin + 1)) noeud.remove();
+  let apres = ancre;
+  for (const noeud of enfants.slice(cible, finCible + 1)) { apres.after(noeud); apres = noeud; }
+
+  cartes = [
+    ...cartes.slice(0, i + 1),
+    ...cartes.slice(cible, finCible + 1),
+    ...cartes.slice(fin + 1, cible),
+    ...cartes.slice(finCible + 1),
+  ];
+
+  // La file suit le meme ordre, sinon un changement de taille de texte, qui
+  // reconstruit le flux a partir d elle, ramenerait la carte repoussee.
+  const vus = new Set();
+  const ordre = [];
+  for (const c of cartes) {
+    if (c._type === "cloture" || c._type === "rappel" || vus.has(c.id)) continue;
+    vus.add(c.id);
+    const source = file.find((f) => f.id === c.id);
+    if (source) ordre.push(source);
+  }
+  file = ordre;
+
+  batirSegments();
+  calculerTeintes();
+  observerClotures();
+  observerCartes();
+  precharger(i + 1, 3);
+  annoncer("plus tard · on change de sujet");
+  allerA(i + 1);
+}
+
+$("b-tard").addEventListener("click", reporter);
 
 function basculerPlein(section, actif) {
   const calque = $("contemplation");
