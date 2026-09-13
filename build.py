@@ -57,6 +57,15 @@ def versionner_cache(html: str) -> str | None:
     empreinte = hashlib.sha256(html.encode("utf-8")).hexdigest()[:8]
     avant = sw.read_text(encoding="utf-8")
     apres = re.sub(r'const CACHE = "[^"]*";', f'const CACHE = "feed-{empreinte}";', avant)
+
+    # Les personnages sont pre-caches plutot que ramasses au vol : ils pesent
+    # trente kilo-octets a eux tous, et un module ouvert pour la premiere fois
+    # dans le metro aurait autrement une colonne vide.
+    persos = sorted(q.name for q in (DOSSIER / "images" / "perso").glob("*.png")) \
+        if (DOSSIER / "images" / "perso").is_dir() else []
+    liste = ", ".join(['"./"', '"./index.html"', '"./manifest.json"']
+                      + [f'"./images/perso/{n}"' for n in persos])
+    apres = re.sub(r"const COQUILLE = \[[^\]]*\];", f"const COQUILLE = [{liste}];", apres)
     if apres != avant:
         sw.write_text(apres, encoding="utf-8")
         return empreinte

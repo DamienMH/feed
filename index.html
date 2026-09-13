@@ -32,32 +32,45 @@
      SOUS l heure et les indicateurs reseau. C est ce qu on veut pour les images,
      qui gagnent tout l ecran, mais il faut alors reserver la place a la main :
      sans ces marges, l en-tete se retrouve cache derriere l horloge. */
-  .haut {
-    position: relative; z-index: 20;
-    padding: calc(18px + env(safe-area-inset-top)) 16px 10px;
-    background: linear-gradient(180deg, var(--ground) 60%, transparent);
-    display: flex; flex-direction: column; gap: 9px;
+  /* ---- colonne laterale ----
+     L en-tete horizontale disait le nom du chapitre et le compteur du jour.
+     Elle a ete remplacee par une colonne, qui dit autre chose : ou en est le
+     niveau du theme en cours. Le format vertical n est pas un caprice, c est
+     ce qui permet d y loger une silhouette en pied et une jauge de treize
+     crans sans rogner sur la largeur du texte plus que necessaire. */
+  .corps { flex: 1; display: flex; min-height: 0; position: relative; z-index: 1; }
+  .flanc {
+    width: 68px; flex: none; z-index: 20;
+    border-right: 1px solid var(--rule);
+    padding: calc(8px + env(safe-area-inset-top)) 0 calc(10px + env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    background: linear-gradient(90deg, var(--ground) 70%, transparent);
   }
-  .segments { display: flex; align-items: center; gap: 10px; }
-  .groupe-seg { display: flex; gap: 3px; flex: var(--poids, 1); }
-  .seg { flex: 1; height: 2.5px; border-radius: 2px; background: rgba(255,255,255,.14); transition: background .3s; }
-  .seg.faite { background: var(--c, var(--accent)); }
-  .seg.active { background: rgba(255,255,255,.55); }
-  .haut-ligne { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-  .module-nom {
-    font-family: "JetBrains Mono", monospace; font-size: 10.5px;
-    letter-spacing: .13em; text-transform: uppercase; color: var(--accent);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    display: flex; align-items: center; gap: 7px; min-width: 0;
+  /* image-rendering: pixelated et une taille exactement egale a la grille :
+     tout autre facteur rendrait les bords irreguliers. */
+  .perso { width: 64px; height: 96px; image-rendering: pixelated; flex: none; }
+  .niv {
+    font-family: "JetBrains Mono", monospace; font-size: 15px; font-weight: 700;
+    color: var(--accent); line-height: 1; font-variant-numeric: tabular-nums;
   }
-  .point-mod { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; }
-  .outils { display: flex; align-items: center; gap: 6px; flex: none; }
-  .outils button, .compteur {
-    font-family: "JetBrains Mono", monospace; font-size: 10.5px;
+  .crans { display: flex; flex-direction: column-reverse; gap: 3px; flex: none; }
+  .cran { display: block; flex: none; width: 14px; height: 9px; border-radius: 1px; background: rgba(255,255,255,.07);
+          box-shadow: inset 0 0 0 1px rgba(255,255,255,.16); }
+  .cran.acquis { background: transparent; box-shadow: inset 0 0 0 2px var(--accent); opacity: .75; }
+  .cran.solide { background: var(--accent); box-shadow: none; }
+  .pousse { flex: 1; min-height: 6px; }
+  .total {
+    font-family: "JetBrains Mono", monospace; font-size: 9px; color: var(--ink-faible);
+    text-align: center; line-height: 1.25; border-top: 1px solid var(--rule);
+    padding-top: 6px; width: 42px;
+  }
+  .total b { display: block; font-size: 13px; color: var(--ink-doux); font-weight: 700; }
+  .outils { display: flex; flex-direction: column; gap: 5px; }
+  .outils button {
+    font-family: "JetBrains Mono", monospace; font-size: 11px;
     color: var(--ink-faible); background: none; border: 1px solid var(--rule);
-    border-radius: 999px; padding: 4px 10px; cursor: pointer;
+    border-radius: 999px; padding: 4px 8px; cursor: pointer;
   }
-  .compteur { border-color: transparent; font-variant-numeric: tabular-nums; }
 
   /* ---- fond partage ----
      L illustration ne vit plus dans la carte mais derriere le flux. Deux volets
@@ -80,13 +93,31 @@
   /* Un chapitre se lit du haut au bas de l ecran : son image passe en texture. */
   .fond.lecture::after { background: var(--ground); opacity: .91; }
 
-  .flux { position: relative; z-index: 1; flex: 1; overflow-y: auto; scroll-snap-type: y mandatory; scroll-behavior: smooth; scrollbar-width: none; }
+  /* ---- volet de titre ---- */
+  .carte-titre { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; }
+  .perso-grand { width: 128px; height: 192px; image-rendering: pixelated; flex: none; }
+  /* Sur un ecran court, la vignette repasse a sa taille naturelle plutot qu a
+     un facteur intermediaire : 1.5 fois un pixel art donne des bords irreguliers. */
+  @media (max-height: 700px) { .perso-grand { width: 64px; height: 96px; } }
+  @media (max-height: 580px) { .titre-resume { display: none; } }
+  .titre-mod {
+    font-family: "JetBrains Mono", monospace; font-size: 10.5px;
+    letter-spacing: .14em; text-transform: uppercase;
+  }
+  .carte-titre h1 { margin: 0; }
+  .titre-rang {
+    font-family: "JetBrains Mono", monospace; font-size: 10px;
+    color: var(--ink-faible); letter-spacing: .08em; text-transform: uppercase;
+  }
+  .titre-resume { color: var(--ink-doux); font-size: 14.5px; margin: 4px 0 0; max-width: 30ch; }
+
+  .flux { position: relative; z-index: 1; flex: 1; min-width: 0; overflow-y: auto; scroll-snap-type: y mandatory; scroll-behavior: smooth; scrollbar-width: none; }
   .flux::-webkit-scrollbar { display: none; }
   .carte {
     scroll-snap-align: start; scroll-snap-stop: always; height: 100%;
     /* La reserve du bas doit couvrir la barre d actions ET l indicateur
        d accueil de l iPhone, sinon la derniere ligne passe dessous. */
-    padding: 2px 22px calc(96px + env(safe-area-inset-bottom)); display: flex; flex-direction: column;
+    padding: 2px 17px calc(96px + env(safe-area-inset-bottom)); display: flex; flex-direction: column;
     justify-content: center; position: relative;
     /* Pas d overscroll-behavior: contain ici. Une carte qui deborde devient
        son propre conteneur de defilement, et "contain" empeche alors le geste
@@ -184,8 +215,8 @@
     color: rgba(255,255,255,.8); font-size: 14px; line-height: 1;
     display: grid; place-items: center; backdrop-filter: blur(6px);
   }
-  .tel.plein .haut, .tel.plein .bas { opacity: 0; pointer-events: none; }
-  .haut, .bas { transition: opacity .3s ease; }
+  .tel.plein .flanc, .tel.plein .bas { opacity: 0; pointer-events: none; }
+  .flanc, .bas { transition: opacity .3s ease; }
 
   /* La contemplation ne se joue pas dans la carte : le flux commence sous
      l en-tete, donc une image stylee a l interieur ne pourra jamais atteindre
@@ -343,7 +374,7 @@
   @keyframes descend { 0%,100% { transform: translateY(0); } 50% { transform: translateY(5px); } }
 
   .bas {
-    position: absolute; left: 0; right: 0; bottom: 0; z-index: 20;
+    position: absolute; left: 68px; right: 0; bottom: 0; z-index: 20;
     padding: 14px 18px calc(16px + env(safe-area-inset-bottom));
     background: linear-gradient(180deg, transparent, var(--ground) 42%);
     display: flex; gap: 10px; align-items: center;
@@ -411,22 +442,24 @@
 </style>
 
 <div class="tel" id="tel">
-  <div class="haut">
-    <div class="segments" id="segments"></div>
-    <div class="haut-ligne">
-      <span class="module-nom"><i class="point-mod"></i><span id="module-txt">Chargement</span></span>
+  <div class="fond" id="fond"><img alt=""><img alt=""></div>
+
+  <div class="corps">
+    <div class="flanc" id="flanc">
+      <img class="perso" id="perso" alt="" style="visibility:hidden">
+      <div class="niv" id="niv">0</div>
+      <div class="crans" id="crans"></div>
+      <div class="pousse"></div>
+      <div class="total" id="total"><b>0</b>total</div>
       <span class="outils">
-        <span class="compteur" id="compteur">0 / 0</span>
         <button type="button" id="b-progression" aria-label="Progression">◷</button>
         <button type="button" id="b-reglages" aria-label="Réglages">⚙</button>
       </span>
     </div>
-  </div>
 
-  <div class="fond" id="fond"><img alt=""><img alt=""></div>
-
-  <div class="flux" id="flux">
-    <div class="attente" id="attente">chargement du contenu…</div>
+    <div class="flux" id="flux">
+      <div class="attente" id="attente">chargement du contenu…</div>
+    </div>
   </div>
 
   <div class="ouverture" id="ouverture"></div>
@@ -1010,6 +1043,63 @@ function sessionDuJour(etat, objectif) {
   return etat.sessions[jour];
 }
 
+/* --------------------------------------------------------------------------
+ * Niveaux
+ * ----------------------------------------------------------------------- */
+
+/* Le niveau d un module, en deux nombres plutot qu un seul.
+ *
+ * "acquis" compte les chapitres lus, et ne redescend jamais : ce qui a ete lu
+ * a ete lu. "consolides" compte ceux dont les rappels ont ete retrouves, et
+ * celui-la bouge dans les deux sens. C est le compromis trouve avec Damien
+ * pour que rater un rappel coute quelque chose de visible sans jamais rendre
+ * avantageux de mentir sur sa reponse : repondre "pas du tout" fait repasser
+ * un cran en creux, ça ne l efface pas, et le calendrier de revision reste
+ * juste. Un chapitre sans carte de rappel est consolide des qu il est lu, il
+ * n y a rien a verifier.
+ */
+function niveaux(paquet, etat) {
+  const termines = new Set(
+    etat.evenements.filter((e) => e.action === "terminee").map((e) => e.carte)
+  );
+
+  // La derniere reponse donnee a chaque rappel, la seule qui compte.
+  const derniere = new Map();
+  for (const r of etat.reponses || []) {
+    const vue = derniere.get(r.rappel);
+    if (!vue || r.date >= vue.date) derniere.set(r.rappel, r);
+  }
+
+  const resultat = {};
+  for (const module of paquet.modules) {
+    const chapitres = paquet.cartes.filter(
+      (c) => c.module === module.id && c.type === "chapitre"
+    );
+    let acquis = 0, consolides = 0;
+    for (const carte of chapitres) {
+      if (!termines.has(carte.id)) continue;
+      acquis += 1;
+      const rappels = carte.rappels || [];
+      const solide = rappels.every((r) => {
+        const rep = derniere.get(r.id);
+        return rep && (rep.note ?? (rep.reussi ? 2 : 0)) >= 1;
+      });
+      if (solide) consolides += 1;
+    }
+    resultat[module.id] = { acquis, consolides, total: chapitres.length };
+  }
+  return resultat;
+}
+
+/* Le niveau global : la somme des niveaux consolides de tous les modules.
+ *
+ * Les modules de feed n ont pas de chapitres, donc pas de niveau : une carte
+ * de feed se regarde et se passe, il n y a rien a consolider. Ils comptent
+ * pour zero ici, ce qui est voulu. */
+function niveauGlobal(niv) {
+  return Object.values(niv).reduce((somme, n) => somme + n.consolides, 0);
+}
+
   return {
     MOMENTS,
     POIDS,
@@ -1027,6 +1117,8 @@ function sessionDuJour(etat, objectif) {
     journaliser,
     modulesActifs,
     momentActuel,
+    niveauGlobal,
+    niveaux,
     planifierRappel,
     progression,
     rappelsDus,
@@ -1040,14 +1132,40 @@ function sessionDuJour(etat, objectif) {
 const PAQUET = null;
 
 const COULEURS = {
-  "esprit-critique": ["#e0a458", "#16130e"],
-  "apprendre":       ["#c9a36b", "#15130f"],
-  "etat":            ["#d5a06a", "#17140f"],
-  "feed-art":        ["#d98e8e", "#171013"],
-  "feed-litterature":["#8fb996", "#0e1512"],
-  "feed-sciences":   ["#8bb0c4", "#0d1317"],
-  "feed-pratique":   ["#7fa6c4", "#0d1218"],
-  "_defaut":         ["#b2a68f", "#141412"],
+  "esprit-critique":      ["#e0a458", "#16130e"],
+  "etat":                 ["#d5a06a", "#17140f"],
+  "faire-politique":      ["#d98f5a", "#181310"],
+  "europe":               ["#c8b070", "#161510"],
+  "pays-reel":            ["#c9a36b", "#15130f"],
+  "protection-sociale":   ["#cbb27d", "#161510"],
+  "economie-actu":        ["#d4a862", "#17140e"],
+  "histoire-france":      ["#c2926a", "#171310"],
+  "rapports-de-force":    ["#bb8f63", "#161211"],
+  "ia":                   ["#7fa6c4", "#0d1218"],
+  "data-auto":            ["#8bb0c4", "#0d1317"],
+  "rail":                 ["#7fb0bd", "#0c1316"],
+  "le-son":               ["#94b8d1", "#0e1319"],
+  "medias-attention":     ["#8fa3c9", "#0f1119"],
+  "gestion-projet":       ["#88a8b8", "#0e1215"],
+  "feed-sciences":        ["#8bb0c4", "#0d1317"],
+  "theorie-musicale":     ["#b79ac9", "#14101a"],
+  "histoire-musiques":    ["#c09ab8", "#160f16"],
+  "feed-art":             ["#d98e8e", "#171013"],
+  "feed-litterature":     ["#8fb996", "#0e1512"],
+  "entrainement":         ["#93c0a0", "#0e1512"],
+  "nutrition-solide":     ["#a8c28d", "#101510"],
+  "karate":               ["#d98e8e", "#171013"],
+  "ton-argent":           ["#8fb996", "#0e1512"],
+  "feed-pratique":        ["#7fa6c4", "#0d1218"],
+  "pratique-anglais":     ["#9fb9a6", "#0f1412"],
+  "apprendre":            ["#c9a36b", "#15130f"],
+  "philosophie":          ["#bfae8c", "#15140f"],
+  "psychanalyse":         ["#b9a2b5", "#141016"],
+  "argumenter":           ["#d3b076", "#161310"],
+  "climat-vivant":        ["#8cbb84", "#0f1410"],
+  "bati":                 ["#c29a72", "#171310"],
+  "autonomie":            ["#a9c07f", "#101510"],
+  "_defaut":              ["#b2a68f", "#141412"],
 };
 const couleurs = (m) => COULEURS[m] || COULEURS._defaut;
 
@@ -1121,7 +1239,15 @@ function volets(carte) {
   // large deborde. Le premier volet dispose de moins de place, puisqu il porte
   // le titre du chapitre et parfois le bandeau du module.
   const hauteur = flux.clientHeight || (window.innerHeight || 800) - 150;
-  const budget = Math.max(300, Math.round((hauteur - 195) * signesParPixel));
+  // Le budget suit aussi la largeur, et pas seulement la hauteur. Tant qu il
+  // n en tenait pas compte, l arrivee de la colonne laterale, qui retire une
+  // soixantaine de pixels au texte, faisait deborder deux volets sur les
+  // petits ecrans sans que les passes de rattrapage suffisent : elles
+  // reduisaient un facteur deja calibre pour une autre largeur. La reference
+  // est la largeur d avant la colonne.
+  const largeur = flux.clientWidth || 346;
+  const budget = Math.max(300,
+    Math.round((hauteur - 195) * signesParPixel * Math.min(1.15, largeur / 346)));
   const budgetPremier = Math.round(budget * 0.66);
 
   // On coupe sur la plus petite place possible, celle du premier volet : un
@@ -1161,6 +1287,14 @@ function volets(carte) {
     suite.splice(place + 1, 0, { ...carte, _schema: true, _paragraphes: [] });
   }
 
+  // Un volet de titre ouvre le chapitre.
+  //
+  // Le personnage y est affiche au double de sa taille, la ou la place ne
+  // manque pas. C est la que l association entre un theme et sa silhouette
+  // s apprend : reconnue une fois en grand, elle se retrouve ensuite dans la
+  // colonne, ou la vignette est trop petite pour l enseigner.
+  suite.unshift({ ...carte, _titre: true, _paragraphes: [] });
+
   return suite.map((v, i) => ({ ...v, _volet: i + 1, _volets: suite.length }));
 }
 
@@ -1168,10 +1302,11 @@ function volets(carte) {
    depend de la police, de la largeur, des cesures. On mesure donc apres coup,
    et on resserre tant qu un volet deborde. Trois passes au maximum, sur des
    elements deja en place, donc invisible a l oeil. */
-function ajusterVolets(rendre, passes = 4) {
+function ajusterVolets(rendre, passes = 5) {
   for (let n = 0; n < passes; n++) {
     const deborde = [...flux.children].some(
-      (s) => s.dataset.type === "chapitre" && s.scrollHeight > s.clientHeight + 6
+      (s) => s.dataset.type === "chapitre" && !s.classList.contains("est-titre")
+             && s.scrollHeight > s.clientHeight + 6
     );
     if (!deborde || signesParPixel <= 1.0) break;
     signesParPixel = Math.max(1.0, signesParPixel - 0.3);
@@ -1288,10 +1423,20 @@ function elementCarte(v, precedente, suivante) {
   }
 
   if (v.type === "chapitre") {
-    if (v._volet === 1) {
-      html += `<div class="kicker"><span class="num-chapitre">${v.chapitre}</span>
-        chapitre ${v.chapitre} · ${["léger", "normal", "exigeant"][v.exigence - 1]}</div>
-        <h1>${echappe(v.chapitre_titre || v.titre)}</h1>`;
+    if (v._titre) {
+      section.innerHTML = `<div class="carte-titre">
+        <img class="perso-grand" src="images/perso/${v.module}.png" alt=""
+             onerror="this.remove()">
+        <div class="titre-mod" style="color:${accent}">${echappe(nomModule)}</div>
+        <h1>${echappe(v.chapitre_titre || v.titre)}</h1>
+        <div class="titre-rang">chapitre ${v.chapitre} · ${["léger", "normal", "exigeant"][v.exigence - 1]}</div>
+        ${v.extrait ? `<p class="titre-resume">${echappe(v.extrait)}</p>` : ""}
+      </div>`;
+      section.classList.add("est-titre");
+      return section;
+    }
+    if (v._volet === 2) {
+      html += `<div class="suite-de">chapitre ${v.chapitre} · ${echappe(v.chapitre_titre || v.titre)}</div>`;
     } else {
       html += `<div class="suite-de">suite du chapitre ${v.chapitre} · ${echappe(v.chapitre_titre || v.titre)}</div>`;
     }
@@ -1430,9 +1575,20 @@ function poserIllustration(section, v, accent, nomModule) {
 
 /* Pose l image de fond de la carte courante. Ne fait rien si c est deja la
    bonne : c est ce silence qui rend le fond immobile entre deux volets. */
+/* Le fond ne sert plus qu aux oeuvres.
+ *
+ * Chaque chapitre portait autrefois une illustration piochee par mot-cle sur
+ * Wikimedia. Le rapport au texte etait souvent lointain et l ensemble donnait
+ * un flux incoherent, alors que le personnage et la couleur du theme disent
+ * deja de quoi on parle. Une carte qui presente une oeuvre, elle, garde son
+ * image en pleine definition : c est l oeuvre qui est le sujet. */
+const AVEC_IMAGE = new Set(["feed-art", "feed-litterature"]);
+
 function poserFond(v) {
   const fond = $("fond");
-  const url = (v && v.image && v.media_type !== "image") ? v.image : "";
+  const montrable = v && v.image && v.media_type !== "image"
+    && (v.oeuvre || AVEC_IMAGE.has(v.module));
+  const url = montrable ? v.image : "";
   fond.classList.toggle("lecture", v?.type === "chapitre");
   if (fond.dataset.url === url) return;
   fond.dataset.url = url;
@@ -1645,41 +1801,48 @@ function batirFlux(options = {}) {
   }
   ajusterVolets(rendre);
 
-  batirSegments();
   observerClotures();
   // L observateur suit les cartes qui viennent d etre creees : sans ce rappel,
   // une reconstruction laisserait l ancien observateur sur des elements qui ne
   // sont plus dans la page, et plus aucune arrivee ne serait constatee.
   observerCartes();
   if (!options.conserverFile) {
-    peindreEntete(0);
+    peindreFlanc(0);
     poserFond(cartes[0]);
     jouerOuverture(0);
     precharger(0, 4);
   }
 }
 
-function batirSegments() {
-  const segments = $("segments");
-  segments.innerHTML = "";
-  let groupe = null, precedent = null;
-  cartes.forEach((v, i) => {
-    if (v._volet > 1 || v._type === "cloture") return;   // une unite par carte
-    if (!groupe || precedent !== v.module) {
-      groupe = document.createElement("div");
-      groupe.className = "groupe-seg";
-      groupe.dataset.n = 0;
-      segments.appendChild(groupe);
-      precedent = v.module;
-    }
-    const s = document.createElement("div");
-    s.className = "seg";
-    s.dataset.index = i;
-    s.style.setProperty("--c", couleurs(v.module)[0]);
-    groupe.appendChild(s);
-    groupe.dataset.n = Number(groupe.dataset.n) + 1;
-    groupe.style.setProperty("--poids", groupe.dataset.n);
-  });
+/* La jauge du theme en cours, un cran par chapitre du parcours.
+ *
+ * Trois etats, et c est tout l interet du dispositif. Vide, le chapitre n a
+ * pas ete lu. En creux, il a ete lu mais son rappel n a pas encore ete
+ * retrouve. Plein, il est consolide. Le chiffre au-dessus compte les crans
+ * pleins, donc il redescend quand un rappel est rate, mais les crans en creux
+ * restent : ce qui a ete lu n est jamais efface, et repondre honnetement "pas
+ * du tout" ne coute rien de plus qu un cran qui se vide. */
+function peindreJauge(module) {
+  const jauge = $("crans");
+  const n = niveauxCourants[module];
+  if (!n || !n.total) {                 // un module de feed n a pas de niveau
+    jauge.innerHTML = "";
+    jauge.dataset.clef = "";
+    $("niv").textContent = "";
+    return;
+  }
+  $("niv").textContent = n.consolides;
+  const clef = `${module}|${n.acquis}|${n.consolides}|${n.total}`;
+  if (jauge.dataset.clef === clef) return;
+  jauge.dataset.clef = clef;
+
+  jauge.innerHTML = "";
+  for (let i = 1; i <= n.total; i++) {
+    const cran = document.createElement("i");
+    cran.className = "cran" + (i <= n.consolides ? " solide"
+                             : i <= n.acquis ? " acquis" : "");
+    jauge.appendChild(cran);
+  }
 }
 
 /* ---------- couleurs continues pendant le defilement ---------- */
@@ -1742,7 +1905,7 @@ function peindre() {
     dernierCentre = centre;
     if (centre > precedent) quitter(precedent);
     const index = Math.min(centre, cartes.length - 1);
-    peindreEntete(index);
+    peindreFlanc(index);
     atteindre(index);
     precharger(index + 1);
     verifierDebordement(index);
@@ -1810,25 +1973,25 @@ function atteindre(index) {
     setTimeout(() => ouvrirFin(), 400);
   }
   sauver();
-  peindreEntete(index);
+  peindreFlanc(index);
 }
 
-function peindreEntete(index) {
+function peindreFlanc(index) {
   const v = cartes[index];
   if (!v) return;
-  const nom = paquet.modules.find((m) => m.id === v.module)?.nom || v.module;
-  $("module-txt").textContent = v._type === "cloture" ? `${nom} · chapitre terminé`
-    : v._type === "rappel" ? `${nom} · rappel`
-    : v._volets > 1 ? `${nom} · volet ${v._volet}/${v._volets}` : nom;
 
-  const session = M.sessionDuJour(etat, etat.objectif || 12);
-  $("compteur").textContent = `${session.vues} / ${session.objectif}`;
-
-  document.querySelectorAll(".seg").forEach((s) => {
-    const i = Number(s.dataset.index);
-    s.classList.toggle("active", i <= index && (cartes[i + 1] === undefined || i + 1 > index));
-    s.classList.toggle("faite", estLue(cartes[i]));
-  });
+  const perso = $("perso");
+  if (perso.dataset.mod !== v.module) {
+    perso.dataset.mod = v.module;
+    perso.style.visibility = "hidden";
+    // Un module sans personnage ne doit pas laisser une icone cassee dans la
+    // colonne : on efface plutot que d afficher un rectangle vide.
+    perso.onerror = () => { perso.removeAttribute("src"); };
+    perso.onload = () => { perso.style.visibility = "visible"; };
+    perso.src = `images/perso/${v.module}.png`;
+  }
+  peindreJauge(v.module);
+  $("total").innerHTML = `<b>${M.niveauGlobal(niveauxCourants)}</b>total`;
 
   const sansActions = v._type === "cloture" || v._type === "rappel";
   $("bas").style.display = sansActions ? "none" : "flex";
@@ -1877,9 +2040,21 @@ function annoncer(texte) {
   r._t = setTimeout(() => r.classList.remove("visible"), 1600);
 }
 
+let niveauxCourants = {};
+
+/* Les niveaux sont recalcules a chaque ecriture plutot qu a chaque affichage :
+   peindreFlanc tourne a chaque carte franchie, et parcourir tout le paquet a
+   ce rythme se sentirait au defilement. */
+function rafraichirNiveaux() {
+  niveauxCourants = M.niveaux(paquet, etat);
+  const jauge = $("crans");
+  if (jauge) jauge.dataset.clef = "";
+}
+
 let sauvegardeMuette = false;
 
 function sauver() {
+  rafraichirNiveaux();
   const ok = M.sauverEtat(etat);
   if (!ok && !sauvegardeMuette) {
     sauvegardeMuette = true;
@@ -1940,7 +2115,7 @@ function marquer(action) {
     }
   }
   sauver();
-  peindreEntete(indexCourant());
+  peindreFlanc(indexCourant());
 }
 
 $("b-lu").addEventListener("click", () => {
@@ -2010,8 +2185,27 @@ function reporter() {
   // Plus rien d un autre sujet dans ce qui reste : on refait la file entiere.
   // Le module vient d etre penalise, elle ne s ouvrira donc pas sur lui.
   if (cible < 0) {
+    const ancienne = file;
     file = [];
     batirFlux();
+    // Un garde-fou, appris a l usage : si le report vide la file, par exemple
+    // parce qu un seul parcours est actif, on se retrouvait devant "plus rien a
+    // lire" alors qu il restait tout un chapitre. On rend alors la file
+    // precedente et on efface le report, puisqu il n a rien pu offrir.
+    if (!cartes.length) {
+      const dernier = etat.evenements[etat.evenements.length - 1];
+      if (dernier && dernier.action === "reportee" && dernier.carte === v.id) {
+        etat.evenements.pop();
+        delete etat.reports[v.module];
+        sauver();
+      }
+      file = ancienne;
+      batirFlux({ conserverFile: true });
+      calculerTeintes();
+      allerA(i);
+      annoncer("rien d’autre à proposer pour le moment");
+      return;
+    }
     calculerTeintes();
     flux.scrollTo({ top: 0 });
     peindre();
@@ -2045,7 +2239,6 @@ function reporter() {
   }
   file = ordre;
 
-  batirSegments();
   calculerTeintes();
   observerClotures();
   observerCartes();
@@ -2104,7 +2297,11 @@ flux.addEventListener("click", (e) => {
     const rang = [...flux.children].indexOf(section);
     const v = cartes[rang >= 0 ? rang : indexCourant()];
     M.planifierRappel(etat, v.id ?? v.rappelId ?? v.q, note);
-    M.sauverEtat(etat);
+    // sauver() et non M.sauverEtat() : c est lui qui recalcule les niveaux, et
+    // une reponse de rappel est precisement ce qui fait bouger un cran de la
+    // jauge, dans un sens ou dans l autre.
+    sauver();
+    peindreFlanc(indexCourant());
     const quand = etat.rappels[v.id ?? v.rappelId ?? v.q];
     const jours = Math.max(1, Math.round((quand.prochaine - Date.now()) / 86400000));
     annoncer(jours === 1 ? "revu demain" : `revu dans ${jours} jours`);
@@ -2220,7 +2417,7 @@ $("progression-corps").addEventListener("click", (e) => {
   etat.aLire = listeLecture().filter((o) => o.titre !== titre);
   sauver();
   rendreProgression();
-  peindreEntete(indexCourant());
+  peindreFlanc(indexCourant());
 });
 $("b-reglages").addEventListener("click", () => { rendreReglages(); $("p-reglages").classList.add("ouvert"); });
 
@@ -2387,6 +2584,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
   }
   M.sessionDuJour(etat, etat.objectif || paquet.reglages?.objectif_cartes_jour || 12);
   M.sauverEtat(etat);
+  rafraichirNiveaux();
   batirFlux();
   calculerTeintes();
   peindre();

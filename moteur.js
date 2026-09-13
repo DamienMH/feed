@@ -545,3 +545,60 @@ export function sessionDuJour(etat, objectif) {
   }
   return etat.sessions[jour];
 }
+
+/* --------------------------------------------------------------------------
+ * Niveaux
+ * ----------------------------------------------------------------------- */
+
+/* Le niveau d un module, en deux nombres plutot qu un seul.
+ *
+ * "acquis" compte les chapitres lus, et ne redescend jamais : ce qui a ete lu
+ * a ete lu. "consolides" compte ceux dont les rappels ont ete retrouves, et
+ * celui-la bouge dans les deux sens. C est le compromis trouve avec Damien
+ * pour que rater un rappel coute quelque chose de visible sans jamais rendre
+ * avantageux de mentir sur sa reponse : repondre "pas du tout" fait repasser
+ * un cran en creux, ça ne l efface pas, et le calendrier de revision reste
+ * juste. Un chapitre sans carte de rappel est consolide des qu il est lu, il
+ * n y a rien a verifier.
+ */
+export function niveaux(paquet, etat) {
+  const termines = new Set(
+    etat.evenements.filter((e) => e.action === "terminee").map((e) => e.carte)
+  );
+
+  // La derniere reponse donnee a chaque rappel, la seule qui compte.
+  const derniere = new Map();
+  for (const r of etat.reponses || []) {
+    const vue = derniere.get(r.rappel);
+    if (!vue || r.date >= vue.date) derniere.set(r.rappel, r);
+  }
+
+  const resultat = {};
+  for (const module of paquet.modules) {
+    const chapitres = paquet.cartes.filter(
+      (c) => c.module === module.id && c.type === "chapitre"
+    );
+    let acquis = 0, consolides = 0;
+    for (const carte of chapitres) {
+      if (!termines.has(carte.id)) continue;
+      acquis += 1;
+      const rappels = carte.rappels || [];
+      const solide = rappels.every((r) => {
+        const rep = derniere.get(r.id);
+        return rep && (rep.note ?? (rep.reussi ? 2 : 0)) >= 1;
+      });
+      if (solide) consolides += 1;
+    }
+    resultat[module.id] = { acquis, consolides, total: chapitres.length };
+  }
+  return resultat;
+}
+
+/* Le niveau global : la somme des niveaux consolides de tous les modules.
+ *
+ * Les modules de feed n ont pas de chapitres, donc pas de niveau : une carte
+ * de feed se regarde et se passe, il n y a rien a consolider. Ils comptent
+ * pour zero ici, ce qui est voulu. */
+export function niveauGlobal(niv) {
+  return Object.values(niv).reduce((somme, n) => somme + n.consolides, 0);
+}
