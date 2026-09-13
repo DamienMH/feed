@@ -337,6 +337,31 @@
   .carte.avec-schema { display: flex; flex-direction: column; }
   .schema { margin: 0; flex: 1; display: flex; flex-direction: column; justify-content: center; }
   .schema svg { width: 100%; height: auto; display: block; color: var(--ink); overflow: visible; }
+
+  /* ---- styles des schemas ----
+     Ils etaient portes par une balise <style> a l interieur de chaque SVG. Un
+     SVG pose en HTML n isole rien : la regle .bloc du schema, qui baisse
+     l opacite a 13 %, s appliquait aussi au bloc des cartes de rappel et de
+     l ecran de fin, qui devenaient illisibles. Le generateur prefixe
+     maintenant ses classes, mais un schema deja en base porte encore les
+     anciennes : on retire le <style> a l injection et on reprend les deux jeux
+     de noms ici, scopes a .schema, ce qui rend la fuite impossible quelle que
+     soit la version du contenu. */
+  .schema .sch-t, .schema .t { font: 500 11.5px "Karla", sans-serif; fill: currentColor; }
+  .schema .sch-s, .schema .s { font: 500 10.5px "Karla", sans-serif; fill: currentColor; opacity: .58; }
+  .schema .sch-f, .schema .f { font: 700 11.5px "Karla", sans-serif; fill: #12100c; }
+  .schema .sch-fs, .schema .fs { font: 500 10.5px "Karla", sans-serif; fill: #12100c; opacity: .72; }
+  .schema .sch-bloc, .schema .bloc { fill: currentColor; opacity: .13; }
+  .schema .sch-fort, .schema .fort { fill: var(--accent); opacity: .92; }
+  .schema .sch-trait, .schema .trait { stroke: currentColor; fill: none; opacity: .28; stroke-width: 1.2; }
+  .schema .sch-courbe, .schema .courbe {
+    stroke: var(--accent); fill: none; stroke-width: 2.2;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+  .schema .sch-pt, .schema .pt { fill: var(--accent); }
+  .schema .sch-halo, .schema .halo {
+    paint-order: stroke; stroke: var(--ground); stroke-width: 3.5px; stroke-linejoin: round;
+  }
   .schema figcaption {
     margin-top: 20px; font-family: "Karla", sans-serif; font-size: 12.5px;
     color: var(--ink-doux); text-align: center; line-height: 1.45;
@@ -1369,6 +1394,13 @@ function rogner(section, p) {
 
 /* ---------- rendu ---------- */
 
+/* Retire la balise <style> d un schema avant de le poser dans la page.
+   Voir le commentaire des styles de schema, plus haut : c est cette balise qui
+   faisait fuir les regles du SVG sur tout le document. */
+function sansStyle(svg) {
+  return String(svg || "").replace(/<style[\s\S]*?<\/style>/gi, "");
+}
+
 function elementCarte(v, precedente, suivante) {
   const section = document.createElement("section");
   section.className = "carte" + (v._type === "cloture" ? " fin-chapitre" : "");
@@ -1445,7 +1477,7 @@ function elementCarte(v, precedente, suivante) {
         `<i class="volet-pt${i < v._volet ? " on" : ""}"></i>`).join("")}</div>`;
     }
     if (v._schema) {
-      html += `<figure class="schema">${v.schema}${v.schema_legende
+      html += `<figure class="schema">${sansStyle(v.schema)}${v.schema_legende
         ? `<figcaption>${echappe(v.schema_legende)}</figcaption>` : ""}</figure>`;
       section.innerHTML = html;
       section.classList.add("avec-schema");
@@ -1649,7 +1681,17 @@ function jouerOuverture(index) {
     ouvertes.delete(o.dataset.cle);
   }
 
-  if (!v || !v.image || !v._ouvre || sobre || ouvertes.has(cle)) {
+  // L ouverture ne joue plus que sur une oeuvre.
+  //
+  // Elle montrait l illustration d un chapitre pendant trois secondes avant le
+  // texte. Ces illustrations etaient piochees par mot-cle et leur rapport au
+  // sujet souvent lointain : un chapitre sur l anglais parle s ouvrait sur une
+  // image quelconque. Elles ont ete retirees du fond, il n y avait aucune
+  // raison de les garder ici. Devant un tableau, en revanche, l ouverture fait
+  // exactement ce pour quoi elle a ete ecrite : donner l oeuvre a voir avant
+  // de la commenter.
+  const oeuvre = v && (v.oeuvre || AVEC_IMAGE.has(v.module));
+  if (!v || !v.image || !oeuvre || !v._ouvre || sobre || ouvertes.has(cle)) {
     fermerOuverture();
     return;
   }

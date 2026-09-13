@@ -6,7 +6,7 @@
 // A incrementer des que la coquille change : l activation efface les anciens
 // caches, sinon un index.html perime resterait servi indefiniment.
 // v2 : ouverture animee et illustrations.
-const CACHE = "feed-f0ec3534";
+const CACHE = "feed-59d7c3fd";
 const COQUILLE = ["./", "./index.html", "./manifest.json", "./images/perso/apprendre.png", "./images/perso/argumenter.png", "./images/perso/autonomie.png", "./images/perso/bati.png", "./images/perso/climat-vivant.png", "./images/perso/data-auto.png", "./images/perso/economie-actu.png", "./images/perso/entrainement.png", "./images/perso/esprit-critique.png", "./images/perso/etat.png", "./images/perso/europe.png", "./images/perso/faire-politique.png", "./images/perso/feed-art.png", "./images/perso/feed-litterature.png", "./images/perso/feed-pratique.png", "./images/perso/feed-sciences.png", "./images/perso/gestion-projet.png", "./images/perso/histoire-france.png", "./images/perso/histoire-musiques.png", "./images/perso/ia.png", "./images/perso/karate.png", "./images/perso/le-son.png", "./images/perso/medias-attention.png", "./images/perso/nutrition-solide.png", "./images/perso/pays-reel.png", "./images/perso/philosophie.png", "./images/perso/pratique-anglais.png", "./images/perso/protection-sociale.png", "./images/perso/psychanalyse.png", "./images/perso/rail.png", "./images/perso/rapports-de-force.png", "./images/perso/theorie-musicale.png", "./images/perso/ton-argent.png"];
 
 self.addEventListener("install", (e) => {
